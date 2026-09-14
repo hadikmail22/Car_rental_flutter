@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../models/car.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
@@ -9,13 +11,34 @@ class CarDetailsScreen extends StatelessWidget {
 
   const CarDetailsScreen({super.key, required this.car});
 
+  Future<void> _shareCar() async {
+    await SharePlus.instance.share(
+      ShareParams(
+        subject: car.fullName,
+        text:
+            '${car.fullName} (${car.year})\n'
+            'Category: ${car.category ?? 'Not specified'}\n'
+            'Price: \$${car.pricePerDay.toStringAsFixed(2)} per day\n'
+            'Status: ${car.status}',
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Color statusColor = car.isAvailable ? Colors.green : Colors.red;
 
     return Scaffold(
-      appBar: AppBar(title: Text(car.fullName)),
-
+      appBar: AppBar(
+        title: Text(car.fullName),
+        actions: [
+          IconButton(
+            tooltip: 'Share car',
+            icon: const Icon(Icons.share_outlined),
+            onPressed: _shareCar,
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -48,7 +71,7 @@ class CarDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
+                const SizedBox(width: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,

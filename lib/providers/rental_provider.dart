@@ -9,39 +9,67 @@ class RentalsProvider extends ChangeNotifier {
   final RentalService _rentalService = RentalService();
 
   final List<Rental> _rentals = [];
+  final List<Rental> _historyRentals = [];
+
+  final int _pageSize = 10;
 
   bool _isLoading = false;
   bool _isLoadingMore = false;
   bool _isCreating = false;
+  bool _isLoadingHistory = false;
+  bool _isLoadingMoreHistory = false;
 
   int? _cancellingRentalId;
   int? _payingDepositRentalId;
+  int? _updatingRentalId;
 
   String? _errorMessage;
+  String? _historyErrorMessage;
+
   CreateRentalResponse? _lastCreatedRental;
 
   int _offset = 0;
   int _total = 0;
-  final int _pageSize = 10;
+  int _historyOffset = 0;
+  int _historyTotal = 0;
 
   List<Rental> get rentals => List.unmodifiable(_rentals);
 
+  List<Rental> get historyRentals => List.unmodifiable(_historyRentals);
+
   bool get isLoading => _isLoading;
+
   bool get isLoadingMore => _isLoadingMore;
+
   bool get isCreating => _isCreating;
 
+  bool get isLoadingHistory => _isLoadingHistory;
+
+  bool get isLoadingMoreHistory => _isLoadingMoreHistory;
+
   int? get cancellingRentalId => _cancellingRentalId;
+
   int? get payingDepositRentalId => _payingDepositRentalId;
 
+  int? get updatingRentalId => _updatingRentalId;
+
   String? get errorMessage => _errorMessage;
+
+  String? get historyErrorMessage => _historyErrorMessage;
 
   CreateRentalResponse? get lastCreatedRental => _lastCreatedRental;
 
   bool get hasMore => _rentals.length < _total;
 
+  bool get hasMoreHistory => _historyRentals.length < _historyTotal;
+
   int get totalRentals => _total;
 
+  int get totalHistoryRentals => _historyTotal;
+
   bool get isEmpty => _rentals.isEmpty;
+
+  bool get isHistoryEmpty => _historyRentals.isEmpty;
 
   Future<void> loadRentals() async {
     if (_isLoading) {
@@ -50,8 +78,6 @@ class RentalsProvider extends ChangeNotifier {
 
     _isLoading = true;
     _errorMessage = null;
-    _offset = 0;
-
     notifyListeners();
 
     try {
@@ -68,8 +94,6 @@ class RentalsProvider extends ChangeNotifier {
       _offset = _rentals.length;
     } on RentalServiceException catch (error) {
       _errorMessage = error.message;
-    } catch (_) {
-      _errorMessage = 'Unable to load rentals.';
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -83,7 +107,6 @@ class RentalsProvider extends ChangeNotifier {
 
     _isLoadingMore = true;
     _errorMessage = null;
-
     notifyListeners();
 
     try {
@@ -98,17 +121,71 @@ class RentalsProvider extends ChangeNotifier {
       _offset = _rentals.length;
     } on RentalServiceException catch (error) {
       _errorMessage = error.message;
-    } catch (_) {
-      _errorMessage = 'Unable to load more rentals.';
     } finally {
       _isLoadingMore = false;
       notifyListeners();
     }
   }
 
+  Future<void> loadRentalHistory() async {
+    if (_isLoadingHistory) {
+      return;
+    }
+
+    _isLoadingHistory = true;
+    _historyErrorMessage = null;
+    notifyListeners();
+
+    try {
+      final RentalPage page = await _rentalService.getRentalHistory(
+        max: _pageSize,
+        offset: 0,
+      );
+
+      _historyRentals
+        ..clear()
+        ..addAll(page.items);
+
+      _historyTotal = page.pagination.total;
+      _historyOffset = _historyRentals.length;
+    } on RentalServiceException catch (error) {
+      _historyErrorMessage = error.message;
+    } finally {
+      _isLoadingHistory = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMoreRentalHistory() async {
+    if (_isLoadingMoreHistory || _isLoadingHistory || !hasMoreHistory) {
+      return;
+    }
+
+    _isLoadingMoreHistory = true;
+    _historyErrorMessage = null;
+    notifyListeners();
+
+    try {
+      final RentalPage page = await _rentalService.getRentalHistory(
+        max: _pageSize,
+        offset: _historyOffset,
+      );
+
+      _historyRentals.addAll(page.items);
+
+      _historyTotal = page.pagination.total;
+      _historyOffset = _historyRentals.length;
+    } on RentalServiceException catch (error) {
+      _historyErrorMessage = error.message;
+    } finally {
+      _isLoadingMoreHistory = false;
+      notifyListeners();
+    }
+  }
+
   Future<CreateRentalResponse?> createRental(
-      CreateRentalRequest request,
-      ) async {
+    CreateRentalRequest request,
+  ) async {
     if (_isCreating) {
       return null;
     }
@@ -116,23 +193,16 @@ class RentalsProvider extends ChangeNotifier {
     _isCreating = true;
     _errorMessage = null;
     _lastCreatedRental = null;
-
     notifyListeners();
 
     try {
-      final CreateRentalResponse response =
-      await _rentalService.createRental(request);
-
-      _lastCreatedRental = response;
+      _lastCreatedRental = await _rentalService.createRental(request);
 
       await loadRentals();
 
-      return response;
+      return _lastCreatedRental;
     } on RentalServiceException catch (error) {
       _errorMessage = error.message;
-      return null;
-    } catch (_) {
-      _errorMessage = 'Unable to create rental.';
       return null;
     } finally {
       _isCreating = false;
@@ -147,27 +217,16 @@ class RentalsProvider extends ChangeNotifier {
 
     _payingDepositRentalId = rentalId;
     _errorMessage = null;
-
     notifyListeners();
 
     try {
-      final Rental updatedRental =
-      await _rentalService.payDeposit(rentalId);
+      final Rental rental = await _rentalService.payDeposit(rentalId);
 
-      final int index = _rentals.indexWhere(
-            (rental) => rental.id == rentalId,
-      );
+      _replaceActive(rental);
 
-      if (index != -1) {
-        _rentals[index] = updatedRental;
-      }
-
-      return updatedRental;
+      return rental;
     } on RentalServiceException catch (error) {
       _errorMessage = error.message;
-      return null;
-    } catch (_) {
-      _errorMessage = 'Unable to pay booking deposit.';
       return null;
     } finally {
       _payingDepositRentalId = null;
@@ -182,15 +241,12 @@ class RentalsProvider extends ChangeNotifier {
 
     _cancellingRentalId = rentalId;
     _errorMessage = null;
-
     notifyListeners();
 
     try {
-      await _rentalService.deleteRental(rentalId);
+      final Rental rental = await _rentalService.cancelRental(rentalId);
 
-      _rentals.removeWhere(
-            (rental) => rental.id == rentalId,
-      );
+      _rentals.removeWhere((item) => item.id == rentalId);
 
       if (_total > 0) {
         _total--;
@@ -198,12 +254,15 @@ class RentalsProvider extends ChangeNotifier {
 
       _offset = _rentals.length;
 
+      _historyRentals.removeWhere((item) => item.id == rentalId);
+
+      _historyRentals.insert(0, rental);
+      _historyTotal++;
+      _historyOffset = _historyRentals.length;
+
       return true;
     } on RentalServiceException catch (error) {
       _errorMessage = error.message;
-      return false;
-    } catch (_) {
-      _errorMessage = 'Unable to cancel rental.';
       return false;
     } finally {
       _cancellingRentalId = null;
@@ -211,8 +270,62 @@ class RentalsProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshRentals() async {
-    await loadRentals();
+  Future<bool> pickupRental(int rentalId) {
+    return _adminUpdate(rentalId, () => _rentalService.pickupRental(rentalId));
+  }
+
+  Future<bool> completeRental(int rentalId, {double damageCost = 0}) {
+    return _adminUpdate(
+      rentalId,
+      () => _rentalService.completeRental(rentalId, damageCost: damageCost),
+    );
+  }
+
+  Future<bool> _adminUpdate(
+    int rentalId,
+    Future<Rental> Function() request,
+  ) async {
+    if (_updatingRentalId != null) {
+      return false;
+    }
+
+    _updatingRentalId = rentalId;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final Rental rental = await request();
+
+      _replaceActive(rental);
+
+      return true;
+    } on RentalServiceException catch (error) {
+      _errorMessage = error.message;
+      return false;
+    } finally {
+      _updatingRentalId = null;
+      notifyListeners();
+    }
+  }
+
+  void _replaceActive(Rental rental) {
+    final int index = _rentals.indexWhere((item) => item.id == rental.id);
+
+    if (index != -1) {
+      _rentals[index] = rental;
+    }
+  }
+
+  Future<void> refreshRentals() {
+    return loadRentals();
+  }
+
+  Future<void> refreshRentalHistory() {
+    return loadRentalHistory();
+  }
+
+  Future<void> loadMoreRentals() {
+    return loadMore();
   }
 
   void clearError() {
@@ -220,23 +333,28 @@ class RentalsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void clearRentals() {
-    _rentals.clear();
-    _offset = 0;
-    _total = 0;
-    _errorMessage = null;
-    _lastCreatedRental = null;
-    _cancellingRentalId = null;
-    _payingDepositRentalId = null;
+  void clearFeedback() {
+    clearError();
+  }
 
+  void clearHistoryError() {
+    _historyErrorMessage = null;
     notifyListeners();
   }
-  Future<void> loadMoreRentals() async {
-    await loadMore();
-  }
 
-  void clearFeedback() {
+  void clearRentals() {
+    _rentals.clear();
+    _historyRentals.clear();
+
+    _offset = 0;
+    _total = 0;
+    _historyOffset = 0;
+    _historyTotal = 0;
+
     _errorMessage = null;
+    _historyErrorMessage = null;
+    _lastCreatedRental = null;
+
     notifyListeners();
   }
 }

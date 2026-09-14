@@ -5,6 +5,7 @@ class AppNotification {
   final String type;
   final DateTime createdAt;
   final bool isRead;
+  final int? rentalId;
 
   const AppNotification({
     required this.id,
@@ -13,6 +14,7 @@ class AppNotification {
     required this.type,
     required this.createdAt,
     required this.isRead,
+    this.rentalId,
   });
 
   AppNotification copyWith({bool? isRead}) {
@@ -23,6 +25,7 @@ class AppNotification {
       type: type,
       createdAt: createdAt,
       isRead: isRead ?? this.isRead,
+      rentalId: rentalId,
     );
   }
 }

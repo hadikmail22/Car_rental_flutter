@@ -6,6 +6,11 @@ import 'package:flutter/foundation.dart';
 class ApiClient {
   ApiClient._();
 
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8080',
+  );
+
   static final CookieJar _cookieJar = CookieJar();
 
   static final Dio dio = _createDio();
@@ -13,19 +18,15 @@ class ApiClient {
   static Dio _createDio() {
     final Dio dio = Dio(
       BaseOptions(
-        baseUrl: 'http://172.26.200.13:8080',
+        baseUrl: baseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 15),
         sendTimeout: const Duration(seconds: 15),
-        headers: {
-          'Accept': 'application/json',
-        },
+        headers: {'Accept': 'application/json'},
       ),
     );
 
-    dio.interceptors.add(
-      CookieManager(_cookieJar),
-    );
+    dio.interceptors.add(CookieManager(_cookieJar));
 
     if (kDebugMode) {
       dio.interceptors.add(

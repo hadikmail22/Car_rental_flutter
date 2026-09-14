@@ -1,23 +1,50 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/car_provider.dart';
+import '../providers/rental_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/logout_helper.dart';
 import 'admin_cars_screen.dart';
 import 'admin_rentals_screen.dart';
-import 'pricing_rules_screen.dart';
-import 'notifications_screen.dart';
 import 'conversations_screen.dart';
+import 'notifications_screen.dart';
+import 'pricing_rules_screen.dart';
+import 'profile_screen.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
 
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature screen will be added next')),
-    );
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CarsProvider>().loadCars();
+      context.read<RentalsProvider>().loadRentals();
+    });
+  }
+
+  Future<void> _refreshDashboard() async {
+    await Future.wait([
+      context.read<CarsProvider>().loadCars(),
+      context.read<RentalsProvider>().loadRentals(),
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
+    final CarsProvider carsProvider = context.watch<CarsProvider>();
+
+    final RentalsProvider rentalsProvider = context.watch<RentalsProvider>();
+
+    final bool isLoading = carsProvider.isLoading || rentalsProvider.isLoading;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -25,6 +52,11 @@ class AdminDashboardScreen extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: isLoading ? null : _refreshDashboard,
+            icon: const Icon(Icons.refresh),
+          ),
           IconButton(
             tooltip: 'Notifications',
             onPressed: () {
@@ -37,7 +69,6 @@ class AdminDashboardScreen extends StatelessWidget {
             },
             icon: const Icon(Icons.notifications_outlined),
           ),
-
           IconButton(
             tooltip: 'Logout',
             onPressed: () {
@@ -47,11 +78,11 @@ class AdminDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: RefreshIndicator(
+        onRefresh: _refreshDashboard,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
           children: [
             const Text(
               'Welcome, Admin',
@@ -65,53 +96,45 @@ class AdminDashboardScreen extends StatelessWidget {
             const SizedBox(height: 6),
 
             const Text(
-              'Manage your car rental system',
+              'Manage cars, rentals and application activity.',
               style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+
+            if (isLoading) const LinearProgressIndicator(),
+
+            if (carsProvider.errorMessage != null ||
+                rentalsProvider.errorMessage != null) ...[
+              const SizedBox(height: 12),
+              _DashboardError(
+                message:
+                    carsProvider.errorMessage ??
+                    rentalsProvider.errorMessage ??
+                    'Unable to load dashboard data.',
+                onRetry: _refreshDashboard,
+              ),
+            ],
+
+            const SizedBox(height: 20),
 
             Row(
               children: [
                 Expanded(
                   child: _StatCard(
-                    title: 'Cars',
-                    value: '24',
+                    title: 'Total Cars',
+                    value: carsProvider.totalCars.toString(),
                     icon: Icons.directions_car,
                     color: AppTheme.primaryBlue,
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: _StatCard(
-                    title: 'Rentals',
-                    value: '12',
+                    title: 'Managed Rentals',
+                    value: rentalsProvider.totalRentals.toString(),
                     icon: Icons.receipt_long,
                     color: Colors.green,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            const Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                    title: 'Pending',
-                    value: '5',
-                    icon: Icons.pending_actions,
-                    color: Colors.orange,
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
-                    title: 'Customers',
-                    value: '8',
-                    icon: Icons.people_outline,
-                    color: Colors.purple,
                   ),
                 ),
               ],
@@ -199,13 +222,51 @@ class AdminDashboardScreen extends StatelessWidget {
                   title: 'Profile',
                   icon: Icons.person_outline,
                   onTap: () {
-                    _showComingSoon(context, 'Profile');
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ProfileScreen(),
+                      ),
+                    );
                   },
                 ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DashboardError extends StatelessWidget {
+  final String message;
+  final Future<void> Function() onRetry;
+
+  const _DashboardError({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade700),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(message, style: TextStyle(color: Colors.red.shade700)),
+          ),
+          IconButton(
+            tooltip: 'Retry',
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
     );
   }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../theme/app_theme.dart';
+import '../widgets/notification_bell.dart';
 import '../widgets/primary_button.dart';
 import 'cars_screen.dart';
 import 'notifications_screen.dart';
@@ -17,6 +19,7 @@ class HomeScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
+            tooltip: 'Notifications',
             onPressed: () {
               Navigator.push(
                 context,
@@ -25,14 +28,10 @@ class HomeScreen extends StatelessWidget {
                 ),
               );
             },
-            icon: const Badge(
-              label: Text('2'),
-              child: Icon(Icons.notifications_outlined),
-            ),
+            icon: const NotificationBell(),
           ),
         ],
       ),
-
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(

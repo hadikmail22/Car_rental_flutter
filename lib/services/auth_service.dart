@@ -5,22 +5,20 @@ import '../models/user_session.dart';
 import 'api_client.dart';
 
 class AuthService {
+  static UserSession? currentUser;
+
   Future<UserSession> login(LoginRequest request) async {
     try {
-
       await ApiClient.clearSession();
 
-      final Response<dynamic> loginResponse =
-      await ApiClient.dio.post(
+      final Response<dynamic> loginResponse = await ApiClient.dio.post(
         '/login/authenticate',
         data: request.toFormData(),
         options: Options(
           contentType: Headers.formUrlEncodedContentType,
           followRedirects: false,
           validateStatus: (status) {
-            return status != null &&
-                status >= 200 &&
-                status < 400;
+            return status != null && status >= 200 && status < 400;
           },
         ),
       );
@@ -30,41 +28,36 @@ class AuthService {
 
       final bool loginFailed =
           redirectLocation.contains('authfail') ||
-              redirectLocation.contains('login_error');
+          redirectLocation.contains('login_error');
 
       if (loginFailed) {
         await ApiClient.clearSession();
 
-        throw const AuthException(
-          'Invalid email or password.',
-        );
+        throw const AuthException('Invalid email or password.');
       }
 
-
-      final Response<dynamic> userResponse =
-      await ApiClient.dio.get('/api/me');
+      final Response<dynamic> userResponse = await ApiClient.dio.get('/api/me');
 
       if (userResponse.data is! Map) {
-        throw const AuthException(
-          'Invalid response from the server.',
-        );
+        throw const AuthException('Invalid response from the server.');
       }
 
-      final Map<String, dynamic> userJson =
-      Map<String, dynamic>.from(
+      final Map<String, dynamic> userJson = Map<String, dynamic>.from(
         userResponse.data as Map,
       );
 
-      return UserSession.fromJson(userJson);
+      final UserSession user = UserSession.fromJson(userJson);
+
+      currentUser = user;
+
+      return user;
     } on AuthException {
       rethrow;
     } on DioException catch (error) {
       if (error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout ||
           error.type == DioExceptionType.sendTimeout) {
-        throw const AuthException(
-          'Backend connection timed out.',
-        );
+        throw const AuthException('Backend connection timed out.');
       }
 
       if (error.type == DioExceptionType.connectionError) {
@@ -76,18 +69,25 @@ class AuthService {
       final int? statusCode = error.response?.statusCode;
 
       if (statusCode == 401 || statusCode == 403) {
-        throw const AuthException(
-          'Invalid email or password.',
-        );
+        throw const AuthException('Invalid email or password.');
       }
 
       throw AuthException(
         'Login failed. Server error: ${statusCode ?? 'unknown'}',
       );
     } catch (_) {
-      throw const AuthException(
-        'An unexpected error occurred.',
-      );
+      throw const AuthException('An unexpected error occurred.');
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await ApiClient.dio.post('/logout');
+    } catch (_) {
+      // Clear the local session even when the backend is unavailable.
+    } finally {
+      currentUser = null;
+      await ApiClient.clearSession();
     }
   }
 }

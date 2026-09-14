@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/auth_service.dart';
+
 Future<void> showLogoutDialog(BuildContext context) async {
   final bool? confirmed = await showDialog<bool>(
     context: context,
@@ -26,6 +28,12 @@ Future<void> showLogoutDialog(BuildContext context) async {
   );
 
   if (confirmed != true || !context.mounted) {
+    return;
+  }
+
+  await AuthService().logout();
+
+  if (!context.mounted) {
     return;
   }
 

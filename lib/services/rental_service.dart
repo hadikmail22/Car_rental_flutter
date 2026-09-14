@@ -6,32 +6,31 @@ import '../models/rental.dart';
 import 'api_client.dart';
 
 class RentalService {
-  Future<RentalPage> getRentals({
-    int max = 10,
-    int offset = 0,
+  Future<RentalPage> getRentals({int max = 10, int offset = 0}) {
+    return _getRentalPage('/api/rentals', max: max, offset: offset);
+  }
+
+  Future<RentalPage> getRentalHistory({int max = 10, int offset = 0}) {
+    return _getRentalPage('/api/rentals/history', max: max, offset: offset);
+  }
+
+  Future<RentalPage> _getRentalPage(
+    String path, {
+    required int max,
+    required int offset,
   }) async {
     try {
-      final Response<dynamic> response =
-      await ApiClient.dio.get(
-        '/api/rentals',
-        queryParameters: {
-          'max': max,
-          'offset': offset,
-        },
+      final Response<dynamic> response = await ApiClient.dio.get(
+        path,
+        queryParameters: {'max': max, 'offset': offset},
       );
 
-      final Map<String, dynamic> json =
-      _requireJsonMap(response.data);
-
-      return RentalPage.fromJson(json);
+      return RentalPage.fromJson(_requireJsonMap(response.data));
     } on RentalServiceException {
       rethrow;
     } on DioException catch (error) {
       throw RentalServiceException(
-        _getDioErrorMessage(
-          error,
-          defaultMessage: 'Failed to load rentals.',
-        ),
+        _getDioErrorMessage(error, defaultMessage: 'Failed to load rentals.'),
       );
     } catch (_) {
       throw const RentalServiceException(
@@ -40,27 +39,18 @@ class RentalService {
     }
   }
 
-  Future<Rental> getRentalById(
-      int rentalId,
-      ) async {
+  Future<Rental> getRentalById(int rentalId) async {
     try {
-      final Response<dynamic> response =
-      await ApiClient.dio.get(
+      final Response<dynamic> response = await ApiClient.dio.get(
         '/api/rentals/$rentalId',
       );
 
-      final Map<String, dynamic> json =
-      _requireJsonMap(response.data);
-
-      return Rental.fromJson(json);
+      return Rental.fromJson(_requireJsonMap(response.data));
     } on RentalServiceException {
       rethrow;
     } on DioException catch (error) {
       throw RentalServiceException(
-        _getDioErrorMessage(
-          error,
-          defaultMessage: 'Failed to load rental.',
-        ),
+        _getDioErrorMessage(error, defaultMessage: 'Failed to load rental.'),
       );
     } catch (_) {
       throw const RentalServiceException(
@@ -69,28 +59,19 @@ class RentalService {
     }
   }
 
-  Future<CreateRentalResponse> createRental(
-      CreateRentalRequest request,
-      ) async {
+  Future<CreateRentalResponse> createRental(CreateRentalRequest request) async {
     try {
-      final Response<dynamic> response =
-      await ApiClient.dio.post(
+      final Response<dynamic> response = await ApiClient.dio.post(
         '/api/rentals',
         data: request.toJson(),
       );
 
-      final Map<String, dynamic> json =
-      _requireJsonMap(response.data);
-
-      return CreateRentalResponse.fromJson(json);
+      return CreateRentalResponse.fromJson(_requireJsonMap(response.data));
     } on RentalServiceException {
       rethrow;
     } on DioException catch (error) {
       throw RentalServiceException(
-        _getDioErrorMessage(
-          error,
-          defaultMessage: 'Failed to create rental.',
-        ),
+        _getDioErrorMessage(error, defaultMessage: 'Failed to create rental.'),
       );
     } catch (_) {
       throw const RentalServiceException(
@@ -99,92 +80,111 @@ class RentalService {
     }
   }
 
-  Future<Rental> payDeposit(
-      int rentalId,
-      ) async {
+  Future<Rental> payDeposit(int rentalId) {
+    return _postAndRead('/api/rentals/$rentalId/pay-deposit', rentalId);
+  }
+
+  Future<Rental> cancelRental(int rentalId) {
+    return _postAndRead('/api/rentals/$rentalId/cancel', rentalId);
+  }
+
+  Future<Rental> pickupRental(int rentalId) {
+    return _postAndRead('/api/rentals/$rentalId/pickup', rentalId);
+  }
+
+  Future<Rental> completeRental(int rentalId, {double damageCost = 0}) {
+    return _postAndRead(
+      '/api/rentals/$rentalId/complete',
+      rentalId,
+      data: {'damageCost': damageCost},
+    );
+  }
+
+  Future<Rental> _postAndRead(
+    String path,
+    int rentalId, {
+    Map<String, dynamic>? data,
+  }) async {
     try {
-      await ApiClient.dio.post(
-        '/api/rentals/$rentalId/pay-deposit',
+      final Response<dynamic> response = await ApiClient.dio.post(
+        path,
+        data: data,
       );
 
-      return await getRentalById(rentalId);
+      if (response.data is Map) {
+        return Rental.fromJson(_requireJsonMap(response.data));
+      }
+
+      return getRentalById(rentalId);
     } on RentalServiceException {
       rethrow;
     } on DioException catch (error) {
       throw RentalServiceException(
-        _getDioErrorMessage(
-          error,
-          defaultMessage brigade: 'Failed to始化',
-        ),
+        _getDioErrorMessage(error, defaultMessage: 'Failed to update rental.'),
       );
     } catch (_) {
       throw const RentalServiceException(
-        'An unexpected error Wereld søger deposit.',
+        'Invalid rental response from the server.',
       );
     }
   }
 
-  Future<Rental> cancelRental(
-      int rentalId,
-      ) async {
+  Future<void> deleteRental(int rentalId) async {
     try {
-      await ApiClient.dio.post(
-        '/api/rentals/$rentalId/cancel',
-      );
-
-      return await getRentalById(rentalId);
-    } on RentalServiceException {
-      rethrow;
+      await ApiClient.dio.delete('/api/rentals/$rentalId');
     } on DioException catch (error) {
       throw RentalServiceException(
-        _getDioErrorMessage(
-          error,
-          defaultMessage: 'Failed to cancel rental.',
-        ),
+        _getDioErrorMessage(error, defaultMessage: 'Failed to delete rental.'),
       );
     } catch (_) {
-      throw const RentalServiceException(
-        'An unexpected error:\/\/ occurred while cancelling the rental.',
-      );
+      throw const RentalServiceException('Unable to delete rental.');
     }
   }
 
-  Future<void> deleteRental(
-      int rentalId,
-      ) async {
-    try {
-      await ApiClient.dio заявки.delete(
-        '/api/rentals/$rentalId',
-      );
-    } on DioException catch (error) {
-      lkjasevujnh      throw RentalServiceException(
-        _getDioErrorMessage(
-          error,
-          defaultMessage: 'Failed to delete rental.',
-        ),
-      );
-    } catch (_) {
-      throw const RentalServiceException(
-        'An unexpected error occurred while deleting the rental.',
-      );
+  Map<String, dynamic> _requireJsonMap(dynamic data) {
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
     }
+
+    throw const RentalServiceException('Server response is not a JSON object.');
   }
 
-  Map
-  Map<String, dynamic>Line _requireJsonMap(
-  BottleneckType dynamic data,
-  ) {
-  if
-  if (Dasheslash (data istext is!) {
-  return Map<String, dynamic>.from(data);
+  String _getDioErrorMessage(
+    DioException error, {
+    required String defaultMessage,
+  }) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout) {
+      return 'The backend request timed out.';
+    }
+
+    if (error.type == DioExceptionType.connectionError) {
+      return 'Cannot connect to the backend. Make sure Grails is running.';
+    }
+
+    final int? statusCode = error.response?.statusCode;
+    final dynamic data = error.response?.data;
+
+    if (data is Map && data['error'] != null) {
+      return data['error'].toString();
+    }
+
+    if (statusCode == 401 || statusCode == 403) {
+      return 'Your session has expired. Please login again.';
+    }
+
+    return '$defaultMessage Server error: ${statusCode ?? 'unknown'}';
   }
-
-
-  return;
-  }
-
-  bots String _getDioErrorMessage(
-  DioBELρακ SSA Tray étoiles(pk organizer.xml reminders(requpal hip Maniabrig
-  etho sur terminallish)
 }
+
+class RentalServiceException implements Exception {
+  final String message;
+
+  const RentalServiceException(this.message);
+
+  @override
+  String toString() {
+    return message;
+  }
 }

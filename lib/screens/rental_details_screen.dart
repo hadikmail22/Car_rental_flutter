@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/rental.dart';
 import '../providers/rental_provider.dart';
@@ -9,18 +10,13 @@ import 'chat_screen.dart';
 class RentalDetailsScreen extends StatefulWidget {
   final Rental rental;
 
-  const RentalDetailsScreen({
-    super.key,
-    required this.rental,
-  });
+  const RentalDetailsScreen({super.key, required this.rental});
 
   @override
-  State<RentalDetailsScreen> createState() =>
-      _RentalDetailsScreenState();
+  State<RentalDetailsScreen> createState() => _RentalDetailsScreenState();
 }
 
-class _RentalDetailsScreenState
-    extends State<RentalDetailsScreen> {
+class _RentalDetailsScreenState extends State<RentalDetailsScreen> {
   late Rental _rental;
 
   @override
@@ -30,11 +26,9 @@ class _RentalDetailsScreenState
   }
 
   String _formatDate(DateTime date) {
-    final String month =
-    date.month.toString().padLeft(2, '0');
+    final String month = date.month.toString().padLeft(2, '0');
 
-    final String day =
-    date.day.toString().padLeft(2, '0');
+    final String day = date.day.toString().padLeft(2, '0');
 
     return '${date.year}-$month-$day';
   }
@@ -61,6 +55,21 @@ class _RentalDetailsScreenState
     }
   }
 
+  Future<void> _shareRental() async {
+    await SharePlus.instance.share(
+      ShareParams(
+        subject: 'Car rental #${_rental.id}',
+        text:
+            'Rental #${_rental.id}\n'
+            'Car: ${_rental.carName}\n'
+            'Dates: ${_formatDate(_rental.startDate)}'
+            ' - ${_formatDate(_rental.endDate)}\n'
+            'Status: ${_rental.status}\n'
+            'Total: \$${_rental.totalPrice.toStringAsFixed(2)}',
+      ),
+    );
+  }
+
   Future<void> _payDeposit() async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
@@ -69,7 +78,7 @@ class _RentalDetailsScreenState
           title: const Text('Pay Booking Deposit'),
           content: Text(
             'Confirm payment of '
-                '\$${_rental.bookingDeposit.toStringAsFixed(2)}?',
+            '\$${_rental.bookingDeposit.toStringAsFixed(2)}?',
           ),
           actions: [
             TextButton(
@@ -93,11 +102,9 @@ class _RentalDetailsScreenState
       return;
     }
 
-    final RentalsProvider provider =
-    context.read<RentalsProvider>();
+    final RentalsProvider provider = context.read<RentalsProvider>();
 
-    final Rental? updatedRental =
-    await provider.payDeposit(_rental.id);
+    final Rental? updatedRental = await provider.payDeposit(_rental.id);
 
     if (!mounted) {
       return;
@@ -107,8 +114,7 @@ class _RentalDetailsScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            provider.errorMessage ??
-                'Unable to pay booking deposit.',
+            provider.errorMessage ?? 'Unable to pay booking deposit.',
           ),
           backgroundColor: Colors.red,
         ),
@@ -123,9 +129,7 @@ class _RentalDetailsScreenState
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-          'Deposit paid and rental confirmed',
-        ),
+        content: Text('Deposit paid and rental confirmed.'),
         backgroundColor: Colors.green,
       ),
     );
@@ -137,9 +141,7 @@ class _RentalDetailsScreenState
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Cancel Rental'),
-          content: const Text(
-            'Are you sure you want to cancel this rental?',
-          ),
+          content: const Text('Are you sure you want to cancel this rental?'),
           actions: [
             TextButton(
               onPressed: () {
@@ -166,11 +168,9 @@ class _RentalDetailsScreenState
       return;
     }
 
-    final RentalsProvider provider =
-    context.read<RentalsProvider>();
+    final RentalsProvider provider = context.read<RentalsProvider>();
 
-    final bool success =
-    await provider.cancelRental(_rental.id);
+    final bool success = await provider.cancelRental(_rental.id);
 
     if (!mounted) {
       return;
@@ -179,10 +179,7 @@ class _RentalDetailsScreenState
     if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            provider.errorMessage ??
-                'Unable to cancel rental.',
-          ),
+          content: Text(provider.errorMessage ?? 'Unable to cancel rental.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -192,7 +189,7 @@ class _RentalDetailsScreenState
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Rental cancelled successfully'),
+        content: Text('Rental cancelled successfully.'),
         backgroundColor: Colors.green,
       ),
     );
@@ -204,34 +201,35 @@ class _RentalDetailsScreenState
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ChatScreen(
-          rentalId: _rental.id,
-          otherUserName: 'Car Rental Admin',
-        ),
+        builder: (context) =>
+            ChatScreen(rentalId: _rental.id, otherUserName: 'Car Rental Admin'),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final RentalsProvider provider =
-    context.watch<RentalsProvider>();
+    final RentalsProvider provider = context.watch<RentalsProvider>();
 
-    final Color statusColor =
-    _statusColor(_rental.status);
+    final Color statusColor = _statusColor(_rental.status);
 
-    final bool isPaying =
-        provider.payingDepositRentalId == _rental.id;
+    final bool isPaying = provider.payingDepositRentalId == _rental.id;
 
-    final bool isCancelling =
-        provider.cancellingRentalId == _rental.id;
+    final bool isCancelling = provider.cancellingRentalId == _rental.id;
 
     final bool canCancel =
-        _rental.status == 'PENDING';
+        _rental.status == 'PENDING' || _rental.status == 'CONFIRMED';
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Rental #${_rental.id}'),
+        actions: [
+          IconButton(
+            tooltip: 'Share rental',
+            icon: const Icon(Icons.share_outlined),
+            onPressed: _shareRental,
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -244,10 +242,7 @@ class _RentalDetailsScreenState
             ),
             child: Column(
               children: [
-                const Icon(
-                  Icons.car_rental,
-                  size: 70,
-                ),
+                const Icon(Icons.car_rental, size: 70),
                 const SizedBox(height: 10),
                 Text(
                   _rental.carName,
@@ -265,14 +260,9 @@ class _RentalDetailsScreenState
 
           Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 8,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: statusColor.withValues(
-                  alpha: 0.12,
-                ),
+                color: statusColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -292,86 +282,62 @@ class _RentalDetailsScreenState
             value: _formatDate(_rental.startDate),
           ),
 
-          _DetailRow(
-            title: 'End Date',
-            value: _formatDate(_rental.endDate),
-          ),
+          _DetailRow(title: 'End Date', value: _formatDate(_rental.endDate)),
 
           _DetailRow(
             title: 'Total Price',
-            value:
-            '\$${_rental.totalPrice.toStringAsFixed(2)}',
+            value: '\$${_rental.totalPrice.toStringAsFixed(2)}',
           ),
 
           _DetailRow(
             title: 'Booking Deposit',
-            value:
-            '\$${_rental.bookingDeposit.toStringAsFixed(2)}',
+            value: '\$${_rental.bookingDeposit.toStringAsFixed(2)}',
           ),
 
           _DetailRow(
             title: 'Security Deposit',
-            value:
-            '\$${_rental.securityDeposit.toStringAsFixed(2)}',
+            value: '\$${_rental.securityDeposit.toStringAsFixed(2)}',
           ),
 
           _DetailRow(
             title: 'Deposit Status',
-            value:
-            _rental.depositPaid ? 'Paid' : 'Not Paid',
+            value: _rental.depositPaid ? 'Paid' : 'Not Paid',
           ),
 
           const SizedBox(height: 20),
 
-          if (_rental.status == 'PENDING' &&
-              !_rental.depositPaid)
+          if (_rental.status == 'PENDING' && !_rental.depositPaid)
             ElevatedButton.icon(
-              onPressed: isPaying
-                  ? null
-                  : _payDeposit,
+              onPressed: isPaying ? null : _payDeposit,
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
               ),
               icon: isPaying
                   ? const SizedBox(
-                width: 21,
-                height: 21,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                ),
-              )
+                      width: 21,
+                      height: 21,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.payment),
-              label: Text(
-                isPaying
-                    ? 'Processing Payment...'
-                    : 'Pay Deposit',
-              ),
+              label: Text(isPaying ? 'Processing Payment...' : 'Pay Deposit'),
             ),
 
           if (canCancel) ...[
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: isCancelling
-                  ? null
-                  : _cancelRental,
+              onPressed: isCancelling ? null : _cancelRental,
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.red,
                 minimumSize: const Size.fromHeight(52),
               ),
               icon: isCancelling
                   ? const SizedBox(
-                width: 21,
-                height: 21,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                ),
-              )
+                      width: 21,
+                      height: 21,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.cancel_outlined),
-              label: Text(
-                isCancelling
-                    ? 'Cancelling...'
-                    : 'Cancel Rental',
-              ),
+              label: Text(isCancelling ? 'Cancelling...' : 'Cancel Rental'),
             ),
           ],
 
@@ -382,9 +348,7 @@ class _RentalDetailsScreenState
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
               ),
-              icon: const Icon(
-                Icons.chat_bubble_outline,
-              ),
+              icon: const Icon(Icons.chat_bubble_outline),
               label: const Text('Message Admin'),
             ),
           ],
@@ -398,10 +362,7 @@ class _DetailRow extends StatelessWidget {
   final String title;
   final String value;
 
-  const _DetailRow({
-    required this.title,
-    required this.value,
-  });
+  const _DetailRow({required this.title, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -411,26 +372,14 @@ class _DetailRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey.shade300,
-        ),
+        border: Border.all(color: Colors.grey.shade300),
       ),
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
-            ),
+            child: Text(title, style: const TextStyle(color: Colors.grey)),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );

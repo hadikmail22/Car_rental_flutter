@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../models/login_request.dart';
+import '../models/user_session.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 import 'admin_dashboard_screen.dart';
@@ -15,9 +19,13 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _emailController =
+  TextEditingController();
 
-  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _passwordController =
+  TextEditingController();
+
+  final AuthService _authService = AuthService();
 
   bool _hidePassword = true;
   bool _isLoading = false;
@@ -30,7 +38,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    final bool isValid = _formKey.currentState?.validate() ?? false;
+    final bool isValid =
+        _formKey.currentState?.validate() ?? false;
 
     if (!isValid) {
       return;
@@ -40,37 +49,77 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final LoginRequest request = LoginRequest(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
 
-    if (!mounted) {
-      return;
+      final UserSession user =
+      await _authService.login(request);
+
+      if (!mounted) {
+        return;
+      }
+
+      final Widget destination;
+
+      if (user.isAdmin) {
+        destination = const AdminDashboardScreen();
+      } else if (user.isCustomer) {
+        destination = const CustomerMainScreen();
+      } else {
+        throw const AuthException(
+          'Your account does not have a valid role.',
+        );
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Welcome ${user.fullName}',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => destination,
+        ),
+      );
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'An unexpected error occurred.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    final String email = _emailController.text.trim().toLowerCase();
-
-    final Widget destination;
-
-    if (email == 'admin@cars.com') {
-      destination = const AdminDashboardScreen();
-    } else {
-      destination = const CustomerMainScreen();
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Login successful'),
-        backgroundColor: Colors.green,
-      ),
-    );
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => destination),
-    );
   }
 
   @override
@@ -117,7 +166,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const Text(
                   'Sign in to continue to Car Rental',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
                 ),
 
                 const SizedBox(height: 32),
@@ -125,20 +177,25 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     hintText: 'example@email.com',
-                    prefixIcon: Icon(Icons.email_outlined),
+                    prefixIcon: Icon(
+                      Icons.email_outlined,
+                    ),
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    final String email = value?.trim() ?? '';
+                    final String email =
+                        value?.trim() ?? '';
 
                     if (email.isEmpty) {
                       return 'Email is required';
                     }
 
-                    if (!email.contains('@') || !email.contains('.')) {
+                    if (!email.contains('@') ||
+                        !email.contains('.')) {
                       return 'Enter a valid email';
                     }
 
@@ -151,14 +208,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _hidePassword,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) {
+                    if (!_isLoading) {
+                      _login();
+                    }
+                  },
                   decoration: InputDecoration(
                     labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    prefixIcon: const Icon(
+                      Icons.lock_outline,
+                    ),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       onPressed: () {
                         setState(() {
-                          _hidePassword = !_hidePassword;
+                          _hidePassword =
+                          !_hidePassword;
                         });
                       },
                       icon: Icon(
@@ -169,7 +235,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
+                    if (value == null ||
+                        value.isEmpty) {
                       return 'Password is required';
                     }
 
@@ -187,13 +254,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(
                         const SnackBar(
-                          content: Text('Forgot password will be added later'),
+                          content: Text(
+                            'Forgot password will be added later',
+                          ),
                         ),
                       );
                     },
-                    child: const Text('Forgot password?'),
+                    child: const Text(
+                      'Forgot password?',
+                    ),
                   ),
                 ),
 
@@ -208,20 +280,25 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment:
+                  MainAxisAlignment.center,
                   children: [
-                    const Text("Don't have an account?"),
-
+                    const Text(
+                      "Don't have an account?",
+                    ),
                     TextButton(
                       onPressed: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const RegisterScreen(),
+                            builder: (context) =>
+                            const RegisterScreen(),
                           ),
                         );
                       },
-                      child: const Text('Create account'),
+                      child: const Text(
+                        'Create account',
+                      ),
                     ),
                   ],
                 ),

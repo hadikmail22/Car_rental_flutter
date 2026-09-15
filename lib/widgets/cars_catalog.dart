@@ -3,15 +3,21 @@ import 'package:provider/provider.dart';
 
 import '../models/car.dart';
 import '../providers/car_provider.dart';
-import '../theme/app_theme.dart';
 import '../screens/car_details_screen.dart';
+import '../theme/app_theme.dart';
 
 class CarsCatalog extends StatefulWidget {
-  const CarsCatalog({super.key});
+  final bool isAdmin;
+
+  const CarsCatalog({
+    super.key,
+    this.isAdmin = false,
+  });
 
   @override
-  State<CarsCatalog> createState() =>
-      _CarsCatalogState();
+  State<CarsCatalog> createState() {
+    return _CarsCatalogState();
+  }
 }
 
 class _CarsCatalogState extends State<CarsCatalog> {
@@ -65,7 +71,9 @@ class _CarsCatalogState extends State<CarsCatalog> {
 
         if (provider.isLoading &&
             provider.cars.isNotEmpty)
-          const LinearProgressIndicator(),
+          const LinearProgressIndicator(
+            minHeight: 3,
+          ),
 
         if (provider.errorMessage != null &&
             provider.cars.isNotEmpty)
@@ -84,9 +92,7 @@ class _CarsCatalogState extends State<CarsCatalog> {
   Widget _buildContent(CarsProvider provider) {
     if (provider.isLoading &&
         provider.cars.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const _LoadingState();
     }
 
     if (provider.errorMessage != null &&
@@ -108,24 +114,32 @@ class _CarsCatalogState extends State<CarsCatalog> {
     }
 
     return RefreshIndicator(
+      color: AppTheme.primaryBlue,
       onRefresh: provider.refreshCars,
       child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
+        physics:
+        const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
           16,
-          12,
           16,
-          24,
+          16,
+          28,
         ),
         itemCount: provider.cars.length +
             (provider.hasMore ||
                 provider.isLoadingMore
                 ? 1
                 : 0),
-        separatorBuilder: (context, index) {
-          return const SizedBox(height: 12);
+        separatorBuilder: (
+            BuildContext context,
+            int index,
+            ) {
+          return const SizedBox(height: 16);
         },
-        itemBuilder: (context, index) {
+        itemBuilder: (
+            BuildContext context,
+            int index,
+            ) {
           if (index == provider.cars.length) {
             return _LoadMoreButton(
               isLoading: provider.isLoadingMore,
@@ -133,9 +147,10 @@ class _CarsCatalogState extends State<CarsCatalog> {
             );
           }
 
-          final Car car = provider.cars[index];
-
-          return _CarCard(car: car);
+          return _CarCard(
+            car: provider.cars[index],
+            unitNumber: index + 1,
+          );
         },
       ),
     );
@@ -153,24 +168,25 @@ class _SearchSection extends StatelessWidget {
     required this.onClearAll,
   });
 
+  static const List<String> _statuses = [
+    'AVAILABLE',
+    'RENTED',
+    'MAINTENANCE',
+  ];
+
   @override
   Widget build(BuildContext context) {
-    const List<String> statuses = [
-      'AVAILABLE',
-      'RENTED',
-      'MAINTENANCE',
-    ];
-
     return Container(
-      color: Colors.white,
+      color: AppTheme.cardColor,
       padding: const EdgeInsets.fromLTRB(
         16,
-        14,
+        15,
         16,
-        12,
+        13,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+        CrossAxisAlignment.start,
         children: [
           TextField(
             controller: controller,
@@ -178,7 +194,9 @@ class _SearchSection extends StatelessWidget {
             decoration: InputDecoration(
               hintText:
               'Search brand, model or plate...',
-              prefixIcon: const Icon(Icons.search),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+              ),
               suffixIcon: provider.searchQuery.isEmpty
                   ? null
                   : IconButton(
@@ -187,41 +205,53 @@ class _SearchSection extends StatelessWidget {
                   controller.clear();
                   provider.updateSearchQuery('');
                 },
-                icon: const Icon(Icons.close),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                ),
               ),
-              border: const OutlineInputBorder(),
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 13),
+
+          const Text(
+            'VEHICLE STATUS',
+            style: TextStyle(
+              color: AppTheme.darkSoft,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.3,
+            ),
+          ),
+
+          const SizedBox(height: 9),
 
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                ChoiceChip(
-                  label: const Text('All'),
+                _StatusChip(
+                  label: 'All',
                   selected:
                   provider.selectedStatus == null,
-                  onSelected: (_) {
+                  onSelected: () {
                     provider.updateStatus(null);
                   },
                 ),
 
                 const SizedBox(width: 8),
 
-                ...statuses.map((status) {
+                ..._statuses.map((String status) {
                   return Padding(
                     padding:
                     const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        _formatStatus(status),
-                      ),
+                    child: _StatusChip(
+                      label: _formatStatus(status),
                       selected:
                       provider.selectedStatus ==
                           status,
-                      onSelected: (_) {
+                      onSelected: () {
                         provider.updateStatus(status);
                       },
                     ),
@@ -231,15 +261,29 @@ class _SearchSection extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
           Row(
             children: [
-              Text(
-                '${provider.totalCars} cars found',
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w500,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryBlueSoft,
+                  borderRadius: BorderRadius.circular(
+                    AppTheme.smallRadius,
+                  ),
+                ),
+                child: Text(
+                  '${provider.totalCars} VEHICLES',
+                  style: const TextStyle(
+                    color: AppTheme.primaryBlueDark,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                  ),
                 ),
               ),
 
@@ -249,10 +293,15 @@ class _SearchSection extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onClearAll,
                   icon: const Icon(
-                    Icons.filter_alt_off,
-                    size: 18,
+                    Icons.filter_alt_off_rounded,
+                    size: 17,
                   ),
-                  label: const Text('Clear filters'),
+                  label: const Text(
+                    'CLEAR',
+                    style: TextStyle(
+                      fontSize: 11,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -275,115 +324,378 @@ class _SearchSection extends StatelessWidget {
   }
 }
 
-class _CarCard extends StatelessWidget {
-  final Car car;
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
 
-  const _CarCard({
-    required this.car,
+  const _StatusChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    final Color statusColor = car.isAvailable
-        ? Colors.green
-        : car.status == 'MAINTENANCE'
-        ? Colors.red
-        : Colors.orange.shade700;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      avatar: selected
+          ? const Icon(
+        Icons.check_rounded,
+        size: 15,
+        color: AppTheme.primaryBlueDark,
+      )
+          : null,
+      backgroundColor: AppTheme.cardColor,
+      selectedColor: AppTheme.primaryYellow,
+      side: BorderSide(
+        color: selected
+            ? AppTheme.primaryYellowStrong
+            : AppTheme.borderColor,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(
+          AppTheme.smallRadius,
+        ),
+      ),
+      labelStyle: TextStyle(
+        color: selected
+            ? AppTheme.darkColor
+            : AppTheme.textColor,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+      ),
+      onSelected: (bool value) {
+        onSelected();
+      },
+    );
+  }
+}
 
-    return Card(
-      color: Colors.white,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  CarDetailsScreen(car: car),
-            ),
-          );
+class _CarCard extends StatelessWidget {
+  final Car car;
+  final int unitNumber;
+
+  const _CarCard({
+    required this.car,
+    required this.unitNumber,
+  });
+
+  void _openDetails(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) {
+          return CarDetailsScreen(car: car);
         },
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final _StatusStyle statusStyle =
+    _statusStyle(car.status);
+
+    return Material(
+      color: AppTheme.cardColor,
+      borderRadius: BorderRadius.circular(
+        AppTheme.defaultRadius,
+      ),
+      child: InkWell(
+        onTap: () {
+          _openDetails(context);
+        },
+        borderRadius: BorderRadius.circular(
+          AppTheme.defaultRadius,
+        ),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: AppTheme.cardColor,
+            border: Border.all(
+              color: AppTheme.borderColor,
+            ),
+            borderRadius: BorderRadius.circular(
+              AppTheme.defaultRadius,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x14171717),
+                offset: Offset(5, 5),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment:
+            CrossAxisAlignment.start,
             children: [
-              _CarImage(imageUrl: car.imageUrl),
+              Container(
+                height: 5,
+                color: car.isAvailable
+                    ? AppTheme.primaryBlue
+                    : AppTheme.primaryYellow,
+              ),
 
-              const SizedBox(width: 14),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  15,
+                  13,
+                  15,
+                  12,
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      car.fullName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'UNIT ${unitNumber.toString().padLeft(3, '0')}'
+                                ' · '
+                                '${(car.category ?? 'UNCATEGORIZED').toUpperCase()}',
+                            maxLines: 1,
+                            overflow:
+                            TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color:
+                              AppTheme.mutedColor,
+                              fontSize: 9,
+                              fontWeight:
+                              FontWeight.w700,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          Text(
+                            car.fullName,
+                            maxLines: 1,
+                            overflow:
+                            TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color:
+                              AppTheme.darkColor,
+                              fontSize: 20,
+                              fontWeight:
+                              FontWeight.w700,
+                              letterSpacing: -0.8,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
 
-                    const SizedBox(height: 5),
-
-                    Text(
-                      '${car.year} • '
-                          '${car.category ?? 'Uncategorized'}',
-                      style: const TextStyle(
-                        color: Colors.grey,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    Text(
-                      '\$${car.pricePerDay.toStringAsFixed(2)} / day',
-                      style: const TextStyle(
-                        color: AppTheme.primaryBlue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
+                    const SizedBox(width: 10),
 
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                        horizontal: 9,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(
-                          alpha: 0.12,
-                        ),
+                        color: statusStyle.background,
                         borderRadius:
-                        BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        car.status,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                        BorderRadius.circular(
+                          AppTheme.smallRadius,
                         ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: statusStyle.foreground,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _statusText(car.status),
+                            style: TextStyle(
+                              color:
+                              statusStyle.foreground,
+                              fontSize: 9,
+                              fontWeight:
+                              FontWeight.w700,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(width: 8),
+              _CarImage(
+                imageUrl: car.imageUrl,
+              ),
 
-              const Icon(
-                Icons.arrow_forward_ios,
-                size: 17,
+              Container(
+                color: const Color(0xFFF0F0F0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 15,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.darkColor,
+                        borderRadius:
+                        BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        car.plateNumber,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    const Text(
+                      'MODEL YEAR',
+                      style: TextStyle(
+                        color: AppTheme.mutedColor,
+                        fontSize: 8,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+
+                    const SizedBox(width: 7),
+
+                    Text(
+                      car.year.toString(),
+                      style: const TextStyle(
+                        color: AppTheme.darkSoft,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  15,
+                  14,
+                  12,
+                  14,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'BASE DAILY RATE',
+                            style: TextStyle(
+                              color:
+                              AppTheme.mutedColor,
+                              fontSize: 8,
+                              fontWeight:
+                              FontWeight.w700,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+
+                          const SizedBox(height: 5),
+
+                          Text(
+                            '\$${car.pricePerDay.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color:
+                              AppTheme.primaryBlueDark,
+                              fontSize: 23,
+                              fontWeight:
+                              FontWeight.w700,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    OutlinedButton(
+                      onPressed: () {
+                        _openDetails(context);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 44),
+                        padding:
+                        const EdgeInsets.symmetric(
+                          horizontal: 14,
+                        ),
+                      ),
+                      child: const Text(
+                        'DETAILS  →',
+                        style: TextStyle(
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  static _StatusStyle _statusStyle(
+      String status,
+      ) {
+    switch (status) {
+      case 'AVAILABLE':
+        return const _StatusStyle(
+          foreground: AppTheme.successColor,
+          background: AppTheme.successSoft,
+        );
+      case 'MAINTENANCE':
+        return const _StatusStyle(
+          foreground: AppTheme.errorDark,
+          background: AppTheme.errorSoft,
+        );
+      default:
+        return const _StatusStyle(
+          foreground: Color(0xFF806900),
+          background: AppTheme.primaryYellowSoft,
+        );
+    }
+  }
+
+  static String _statusText(String status) {
+    switch (status) {
+      case 'AVAILABLE':
+        return 'IN SERVICE';
+      case 'MAINTENANCE':
+        return 'MAINTENANCE';
+      case 'RENTED':
+        return 'RENTED';
+      default:
+        return status.replaceAll('_', ' ');
+    }
   }
 }
 
@@ -397,33 +709,74 @@ class _CarImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Widget fallback = Container(
-      width: 92,
-      height: 92,
-      color: AppTheme.primaryYellow,
+      height: 205,
+      width: double.infinity,
+      color: AppTheme.primaryBlueSoft,
       alignment: Alignment.center,
       child: const Icon(
-        Icons.directions_car_filled,
-        size: 46,
-        color: AppTheme.darkColor,
+        Icons.directions_car_filled_rounded,
+        size: 72,
+        color: AppTheme.primaryBlue,
       ),
     );
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: imageUrl == null || imageUrl!.isEmpty
-          ? fallback
-          : Image.network(
-        imageUrl!,
-        width: 92,
-        height: 92,
-        fit: BoxFit.cover,
-        errorBuilder: (
-            context,
-            error,
-            stackTrace,
-            ) {
-          return fallback;
-        },
+    if (imageUrl == null || imageUrl!.isEmpty) {
+      return fallback;
+    }
+
+    return Image.network(
+      imageUrl!,
+      height: 205,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (
+          BuildContext context,
+          Object error,
+          StackTrace? stackTrace,
+          ) {
+        return fallback;
+      },
+      loadingBuilder: (
+          BuildContext context,
+          Widget child,
+          ImageChunkEvent? progress,
+          ) {
+        if (progress == null) {
+          return child;
+        }
+
+        return Container(
+          height: 205,
+          color: AppTheme.primaryBlueSoft,
+          alignment: Alignment.center,
+          child: const CircularProgressIndicator(),
+        );
+      },
+    );
+  }
+}
+
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text(
+            'LOADING FLEET...',
+            style: TextStyle(
+              color: AppTheme.primaryBlueDark,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -449,10 +802,17 @@ class _LoadMoreButton extends StatelessWidget {
       );
     }
 
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: const Icon(Icons.expand_more),
-      label: const Text('Load more cars'),
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(
+          Icons.expand_more_rounded,
+        ),
+        label: const Text(
+          'LOAD MORE VEHICLES',
+        ),
+      ),
     );
   }
 }
@@ -470,29 +830,46 @@ class _ErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
+      margin: const EdgeInsets.fromLTRB(
+        16,
+        12,
+        16,
+        0,
       ),
-      color: Colors.red.shade50,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.errorSoft,
+        border: Border.all(
+          color: AppTheme.errorColor,
+        ),
+        borderRadius: BorderRadius.circular(
+          AppTheme.defaultRadius,
+        ),
+      ),
       child: Row(
         children: [
-          Icon(
-            Icons.error_outline,
-            color: Colors.red.shade700,
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppTheme.errorDark,
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(
-                color: Colors.red.shade700,
+              style: const TextStyle(
+                color: AppTheme.errorDark,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
           IconButton(
+            tooltip: 'Close',
             onPressed: onClose,
-            icon: const Icon(Icons.close),
+            icon: const Icon(
+              Icons.close_rounded,
+              size: 18,
+            ),
           ),
         ],
       ),
@@ -511,42 +888,15 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 64,
-              color: Colors.red.shade400,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Unable to load cars',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try again'),
-            ),
-          ],
-        ),
-      ),
+    return _MessageState(
+      icon: Icons.cloud_off_outlined,
+      iconColor: AppTheme.errorDark,
+      iconBackground: AppTheme.errorSoft,
+      title: 'Unable to load fleet',
+      message: message,
+      buttonLabel: 'TRY AGAIN',
+      buttonIcon: Icons.refresh_rounded,
+      onPressed: onRetry,
     );
   }
 }
@@ -564,55 +914,116 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _MessageState(
+      icon: Icons.directions_car_outlined,
+      iconColor: AppTheme.primaryBlue,
+      iconBackground: AppTheme.primaryBlueSoft,
+      title: hasFilters
+          ? 'No matching vehicles'
+          : 'No vehicles available',
+      message: hasFilters
+          ? 'Try changing your search or selected status.'
+          : 'There are no vehicles to display right now.',
+      buttonLabel:
+      hasFilters ? 'CLEAR FILTERS' : 'REFRESH',
+      buttonIcon: hasFilters
+          ? Icons.filter_alt_off_rounded
+          : Icons.refresh_rounded,
+      onPressed:
+      hasFilters ? onClearFilters : onRefresh,
+    );
+  }
+}
+
+class _MessageState extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBackground;
+  final String title;
+  final String message;
+  final String buttonLabel;
+  final IconData buttonIcon;
+  final VoidCallback onPressed;
+
+  const _MessageState({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBackground,
+    required this.title,
+    required this.message,
+    required this.buttonLabel,
+    required this.buttonIcon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.directions_car_outlined,
-              size: 70,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              hasFilters
-                  ? 'No matching cars'
-                  : 'No cars available',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+            Container(
+              width: 74,
+              height: 74,
+              decoration: BoxDecoration(
+                color: iconBackground,
+                borderRadius: BorderRadius.circular(
+                  AppTheme.largeRadius,
+                ),
+              ),
+              child: Icon(
+                icon,
+                color: iconColor,
+                size: 38,
               ),
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: 18),
+
             Text(
-              hasFilters
-                  ? 'Try changing your search or filters.'
-                  : 'There are no cars to display right now.',
+              title,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Colors.grey,
+                color: AppTheme.darkColor,
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 20),
-            if (hasFilters)
-              OutlinedButton.icon(
-                onPressed: onClearFilters,
-                icon: const Icon(
-                  Icons.filter_alt_off,
-                ),
-                label: const Text('Clear filters'),
-              )
-            else
-              OutlinedButton.icon(
-                onPressed: onRefresh,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Refresh'),
+
+            const SizedBox(height: 8),
+
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppTheme.textColor,
+                fontSize: 11,
+                height: 1.5,
               ),
+            ),
+
+            const SizedBox(height: 20),
+
+            OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(buttonIcon),
+              label: Text(buttonLabel),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+class _StatusStyle {
+  final Color foreground;
+  final Color background;
+
+  const _StatusStyle({
+    required this.foreground,
+    required this.background,
+  });
 }

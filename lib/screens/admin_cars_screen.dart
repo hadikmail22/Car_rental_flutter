@@ -11,12 +11,10 @@ class AdminCarsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'Manage Cars',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-      body: const CarsCatalog(),
+      body: const CarsCatalog(isAdmin: true),
     );
   }
 }

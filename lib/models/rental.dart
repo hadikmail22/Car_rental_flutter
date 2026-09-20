@@ -207,11 +207,14 @@ DateTime _toDateTime(dynamic value) {
   if (value is num) {
     return DateTime.fromMillisecondsSinceEpoch(
       value.toInt(),
+      isUtc: true,
     );
   }
 
   final DateTime? parsedDate =
-  DateTime.tryParse(value?.toString() ?? '');
+  DateTime.tryParse(
+    value?.toString() ?? '',
+  );
 
   if (parsedDate == null) {
     throw const FormatException(
@@ -219,5 +222,11 @@ DateTime _toDateTime(dynamic value) {
     );
   }
 
-  return parsedDate;
+  return parsedDate.isUtc
+      ? parsedDate
+      : DateTime.utc(
+    parsedDate.year,
+    parsedDate.month,
+    parsedDate.day,
+  );
 }

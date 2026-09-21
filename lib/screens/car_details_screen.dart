@@ -173,15 +173,21 @@ class CarDetailsScreen extends StatelessWidget {
                         Icons.local_offer_outlined,
                         label: 'DAILY RATE',
                         value:
-                        '\$${car.pricePerDay.toStringAsFixed(2)}',
-                        valueColor:
-                        AppTheme.primaryBlueDark,
+                        '\$${car.effectivePricePerDay.toStringAsFixed(2)}',
+                        valueColor: car.hasDiscount
+                            ? AppTheme.successColor
+                            : AppTheme.primaryBlueDark,
                       ),
                     ),
                   ],
                 ),
 
                 const SizedBox(height: 22),
+
+                if (car.hasDiscount) ...[
+                  _OfferNotice(car: car),
+                  const SizedBox(height: 14),
+                ],
 
                 _AvailabilityNotice(
                   isAvailable: car.isAvailable,
@@ -422,11 +428,25 @@ class _VehicleCard extends StatelessWidget {
                         ),
                       ),
 
+                      if (car.hasDiscount) ...[
+                        Text(
+                          '\$${car.pricePerDay.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            color: AppTheme.mutedColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+
                       Text(
-                        '\$${car.pricePerDay.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color:
-                          AppTheme.primaryBlueDark,
+                        '\$${car.effectivePricePerDay.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: car.hasDiscount
+                              ? AppTheme.successColor
+                              : AppTheme.primaryBlueDark,
                           fontSize: 24,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -1,
@@ -725,5 +745,70 @@ class _DetailsGridPainter extends CustomPainter {
       covariant _DetailsGridPainter oldDelegate,
       ) {
     return false;
+  }
+}
+
+
+// Green banner that explains today's offer on this car.
+class _OfferNotice extends StatelessWidget {
+  final Car car;
+
+  const _OfferNotice({required this.car});
+
+  @override
+  Widget build(BuildContext context) {
+    final String percentage =
+        car.offerPercentage?.toStringAsFixed(0) ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.successSoft,
+        border: Border.all(color: AppTheme.successColor),
+        borderRadius: BorderRadius.circular(AppTheme.defaultRadius),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.local_offer_outlined,
+            color: AppTheme.successColor,
+            size: 20,
+          ),
+
+          const SizedBox(width: 12),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$percentage% off today',
+                  style: const TextStyle(
+                    color: AppTheme.successColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+
+                const SizedBox(height: 3),
+
+                Text(
+                  car.offerEndDate == null
+                      ? (car.offerName ?? 'Limited time offer')
+                      : '${car.offerName ?? 'Offer'} · ends ${car.offerEndDate}',
+                  style: const TextStyle(
+                    color: AppTheme.textColor,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

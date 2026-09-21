@@ -28,7 +28,7 @@ class AuthService {
 
       final bool loginFailed =
           redirectLocation.contains('authfail') ||
-          redirectLocation.contains('login_error');
+              redirectLocation.contains('login_error');
 
       if (loginFailed) {
         await ApiClient.clearSession();
@@ -75,6 +75,70 @@ class AuthService {
       throw AuthException(
         'Login failed. Server error: ${statusCode ?? 'unknown'}',
       );
+    } catch (_) {
+      throw const AuthException('An unexpected error occurred.');
+    }
+  }
+
+  Future<void> register({
+    required String fullName,
+    required String email,
+    required String phone,
+    required String dateOfBirth,
+    required String drivingLicenseNumber,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    try {
+      await ApiClient.clearSession();
+
+      final Response<dynamic> response = await ApiClient.dio.post(
+        '/signup',
+        data: {
+          'fullName': fullName.trim(),
+          'email': email.trim().toLowerCase(),
+          'phone': phone.trim(),
+          'dateOfBirth': dateOfBirth.trim(),
+          'drivingLicenseNumber': drivingLicenseNumber.trim(),
+          'password': password,
+          'confirmPassword': confirmPassword,
+        },
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          followRedirects: false,
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      final String location = response.headers.value('location') ?? '';
+
+      final bool success =
+          (response.statusCode == 302 || response.statusCode == 303) &&
+              location.contains('/login');
+
+      if (!success) {
+        throw const AuthException(
+          'Registration failed. The email or licence number may already be used.',
+        );
+      }
+    } on AuthException {
+      rethrow;
+    } on DioException catch (error) {
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout) {
+        throw const AuthException('Backend connection timed out.');
+      }
+
+      if (error.type == DioExceptionType.connectionError) {
+        throw const AuthException(
+          'Cannot connect to the backend. Make sure Grails is running.',
+        );
+      }
+
+      throw const AuthException('Registration failed. Please try again.');
     } catch (_) {
       throw const AuthException('An unexpected error occurred.');
     }

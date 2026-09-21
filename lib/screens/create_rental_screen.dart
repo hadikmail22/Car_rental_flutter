@@ -5,6 +5,7 @@ import '../models/car.dart';
 import '../models/create_rental_request.dart';
 import '../models/create_rental_response.dart';
 import '../providers/rental_provider.dart';
+import '../services/rental_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 
@@ -24,8 +25,59 @@ class CreateRentalScreen extends StatefulWidget {
 
 class _CreateRentalScreenState
     extends State<CreateRentalScreen> {
+  final RentalService _rentalService = RentalService();
+
   DateTime? _startDate;
   DateTime? _endDate;
+
+  RentalQuote? _quote;
+  bool _isLoadingQuote = false;
+  int _quoteRequestId = 0;
+
+  // The server is the source of truth for the price,
+  // so its quote wins over the local estimate.
+  double get _displayedPrice {
+    return _quote?.totalPrice ?? _estimatedPrice;
+  }
+
+  Future<void> _loadQuote() async {
+    if (_startDate == null || _endDate == null) {
+      return;
+    }
+
+    final int requestId = ++_quoteRequestId;
+
+    setState(() {
+      _isLoadingQuote = true;
+    });
+
+    try {
+      final RentalQuote quote = await _rentalService.getQuote(
+        carId: widget.car.id,
+        startDate: _startDate!,
+        endDate: _endDate!,
+      );
+
+      if (!mounted || requestId != _quoteRequestId) {
+        return;
+      }
+
+      setState(() {
+        _quote = quote;
+        _isLoadingQuote = false;
+      });
+    } on RentalServiceException {
+      if (!mounted || requestId != _quoteRequestId) {
+        return;
+      }
+
+      // If the quote fails, keep showing the local estimate.
+      setState(() {
+        _quote = null;
+        _isLoadingQuote = false;
+      });
+    }
+  }
 
   String _formatDate(DateTime? date) {
     if (date == null) {
@@ -77,12 +129,15 @@ class _CreateRentalScreenState
 
     setState(() {
       _startDate = selectedDate;
+      _quote = null;
 
       if (_endDate != null &&
           _endDate!.isBefore(selectedDate)) {
         _endDate = null;
       }
     });
+
+    _loadQuote();
   }
 
   Future<void> _selectEndDate() async {
@@ -110,7 +165,10 @@ class _CreateRentalScreenState
 
     setState(() {
       _endDate = selectedDate;
+      _quote = null;
     });
+
+    _loadQuote();
   }
 
   Future<void> _confirmRental() async {
@@ -185,7 +243,7 @@ class _CreateRentalScreenState
               _DialogRow(
                 title: 'Estimated price',
                 value:
-                '\$${_estimatedPrice.toStringAsFixed(2)}',
+                '\$${_displayedPrice.toStringAsFixed(2)}',
               ),
               const SizedBox(height: 16),
               const Text(
@@ -428,7 +486,7 @@ class _CreateRentalScreenState
                     number: '02',
                     title: 'PRICE SUMMARY',
                     description:
-                    'Review the estimated base price.',
+                    'Final price calculated by the server.',
                   ),
 
                   const SizedBox(height: 14),
@@ -437,8 +495,9 @@ class _CreateRentalScreenState
                     rentalDays: _rentalDays,
                     pricePerDay:
                     widget.car.pricePerDay,
-                    estimatedPrice:
-                    _estimatedPrice,
+                    estimatedPrice: _displayedPrice,
+                    isLoadingQuote: _isLoadingQuote,
+                    quote: _quote,
                   ),
 
                   const SizedBox(height: 24),
@@ -784,11 +843,15 @@ class _PriceSummary extends StatelessWidget {
   final int rentalDays;
   final double pricePerDay;
   final double estimatedPrice;
+  final bool isLoadingQuote;
+  final RentalQuote? quote;
 
   const _PriceSummary({
     required this.rentalDays,
     required this.pricePerDay,
     required this.estimatedPrice,
+    this.isLoadingQuote = false,
+    this.quote,
   });
 
   @override
@@ -833,8 +896,28 @@ class _PriceSummary extends StatelessWidget {
             child: Divider(),
           ),
 
+          if (quote != null && quote!.adjustmentAmount != 0) ...[
+            _PriceRow(
+              title: 'BASE TOTAL',
+              value:
+              '\$${quote!.baseTotal.toStringAsFixed(2)}',
+            ),
+
+            const SizedBox(height: 12),
+
+            _PriceRow(
+              title: quote!.hasDiscount ? 'DISCOUNT' : 'SURCHARGE',
+              value:
+              '\$${quote!.adjustmentAmount.toStringAsFixed(2)}',
+            ),
+
+            const SizedBox(height: 12),
+          ],
+
           _PriceRow(
-            title: 'ESTIMATED BASE PRICE',
+            title: isLoadingQuote
+                ? 'CALCULATING...'
+                : (quote != null ? 'TOTAL PRICE' : 'ESTIMATED BASE PRICE'),
             value:
             '\$${estimatedPrice.toStringAsFixed(2)}',
             isTotal: true,

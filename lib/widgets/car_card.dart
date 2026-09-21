@@ -179,6 +179,42 @@ class _CarCardState extends State<CarCard> {
                       ),
                     ),
 
+                    // Offer ribbon, same idea as the website.
+                    if (widget.car.hasDiscount)
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF18864B),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.local_offer_outlined,
+                                color: Colors.white,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${widget.car.offerPercentage?.toStringAsFixed(0) ?? ''}% OFF',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
                     if (widget.showFavorite)
                       Positioned(
                         top: 6,
@@ -287,22 +323,36 @@ class _CarCardState extends State<CarCard> {
 
                 const Spacer(),
 
+                // When an offer is running today, the old price is
+                // crossed out above the new one.
+                if (widget.car.hasDiscount)
+                  Text(
+                    '\$${widget.car.pricePerDay.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Color(0xFF8A94A6),
+                      fontSize: 12,
+                      decoration:
+                      TextDecoration.lineThrough,
+                    ),
+                  ),
+
                 Semantics(
                   label:
-                  '${widget.car.pricePerDay.toStringAsFixed(2)} dollars per day',
+                  '${widget.car.effectivePricePerDay.toStringAsFixed(2)} dollars per day',
                   child: Row(
                     crossAxisAlignment:
                     CrossAxisAlignment.end,
                     children: [
                       Flexible(
                         child: Text(
-                          '\$${widget.car.pricePerDay.toStringAsFixed(2)}',
+                          '\$${widget.car.effectivePricePerDay.toStringAsFixed(2)}',
                           overflow:
                           TextOverflow
                               .ellipsis,
-                          style:
-                          const TextStyle(
-                            color: _gold,
+                          style: TextStyle(
+                            color: widget.car.hasDiscount
+                                ? const Color(0xFF18864B)
+                                : _gold,
                             fontSize: 18,
                             fontWeight:
                             FontWeight.bold,

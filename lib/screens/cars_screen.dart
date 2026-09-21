@@ -2,9 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/cars_catalog.dart';
+import '../widgets/notification_bell.dart';
+import 'notifications_screen.dart';
 
 class CarsScreen extends StatelessWidget {
   const CarsScreen({super.key});
+
+  void _openNotifications(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) {
+          return const NotificationsScreen();
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +75,22 @@ class CarsScreen extends StatelessWidget {
             ),
           ],
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(
+              right: 14,
+              top: 8,
+              bottom: 8,
+            ),
+            child: IconButton(
+              tooltip: 'Notifications',
+              onPressed: () {
+                _openNotifications(context);
+              },
+              icon: const NotificationBell(),
+            ),
+          ),
+        ],
       ),
       body: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,

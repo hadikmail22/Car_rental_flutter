@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Main brand colors from the Grails website.
+  // Main brand colors from the Grails website (unchanged).
   static const Color primaryYellow = Color(0xFFF7DC6F);
   static const Color primaryYellowStrong = Color(0xFFE3C54F);
   static const Color primaryYellowSoft = Color(0xFFFFF8D8);
@@ -31,6 +32,48 @@ class AppTheme {
   static const double defaultRadius = 10;
   static const double largeRadius = 14;
 
+  /*
+   * Two typefaces with clear roles:
+   *
+   * - JetBrains Mono for headings, buttons, labels, plates and prices.
+   *   The website uses Geist Mono and falls back to JetBrains Mono,
+   *   so the app keeps the same technical character.
+   *
+   * - IBM Plex Sans for paragraphs and descriptions, because long
+   *   sentences in a monospaced face are tiring to read on a phone.
+   */
+  static TextStyle mono({
+    required double fontSize,
+    FontWeight fontWeight = FontWeight.w700,
+    Color color = darkColor,
+    double? letterSpacing,
+    double? height,
+  }) {
+    return GoogleFonts.jetBrainsMono(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
+      height: height,
+    );
+  }
+
+  static TextStyle sans({
+    required double fontSize,
+    FontWeight fontWeight = FontWeight.w400,
+    Color color = textColor,
+    double? letterSpacing,
+    double? height,
+  }) {
+    return GoogleFonts.ibmPlexSans(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
+      height: height,
+    );
+  }
+
   static ThemeData get lightTheme {
     const ColorScheme colorScheme = ColorScheme.light(
       primary: primaryYellow,
@@ -47,89 +90,78 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: backgroundColor,
-      fontFamily: 'monospace',
 
-      dividerColor: borderSoft,
-
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-          color: darkColor,
+      // Sans is the default, so any text that is not styled
+      // explicitly stays comfortable to read.
+      textTheme: TextTheme(
+        displayLarge: mono(
           fontSize: 38,
-          fontWeight: FontWeight.w700,
-          height: 1.1,
           letterSpacing: -1.5,
-        ),
-        displayMedium: TextStyle(
-          color: darkColor,
-          fontSize: 32,
-          fontWeight: FontWeight.w700,
           height: 1.1,
+        ),
+        displayMedium: mono(
+          fontSize: 32,
           letterSpacing: -1.2,
+          height: 1.1,
         ),
-        headlineLarge: TextStyle(
-          color: darkColor,
-          fontSize: 28,
-          fontWeight: FontWeight.w700,
-          height: 1.15,
+        headlineLarge: mono(
+          fontSize: 27,
           letterSpacing: -1,
+          height: 1.15,
         ),
-        headlineMedium: TextStyle(
-          color: darkColor,
-          fontSize: 24,
-          fontWeight: FontWeight.w700,
+        headlineMedium: mono(
+          fontSize: 23,
+          letterSpacing: -0.6,
           height: 1.2,
-          letterSpacing: -0.7,
         ),
-        titleLarge: TextStyle(
-          color: darkColor,
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
+        titleLarge: mono(
+          fontSize: 19,
           height: 1.25,
         ),
-        titleMedium: TextStyle(
-          color: darkColor,
+        titleMedium: mono(
           fontSize: 16,
-          fontWeight: FontWeight.w700,
           height: 1.3,
         ),
-        titleSmall: TextStyle(
-          color: primaryBlueDark,
+        titleSmall: mono(
           fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.5,
+          color: primaryBlueDark,
+          letterSpacing: 1.2,
         ),
-        bodyLarge: TextStyle(
-          color: textColor,
+        bodyLarge: sans(
           fontSize: 16,
-          fontWeight: FontWeight.w400,
+          height: 1.55,
+        ),
+        bodyMedium: sans(
+          fontSize: 14,
           height: 1.5,
         ),
-        bodyMedium: TextStyle(
-          color: textColor,
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
+        bodySmall: sans(
+          fontSize: 12.5,
+          color: mutedColor,
           height: 1.45,
         ),
-        bodySmall: TextStyle(
-          color: mutedColor,
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-          height: 1.4,
-        ),
-        labelLarge: TextStyle(
-          color: darkColor,
+        labelLarge: mono(
           fontSize: 15,
-          fontWeight: FontWeight.w700,
         ),
-        labelMedium: TextStyle(
-          color: darkSoft,
+        labelMedium: mono(
           fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
+          color: darkSoft,
+          letterSpacing: 0.6,
+        ),
+        labelSmall: mono(
+          fontSize: 11,
+          color: mutedColor,
+          letterSpacing: 0.6,
         ),
       ),
 
-      appBarTheme: const AppBarTheme(
+      dividerTheme: const DividerThemeData(
+        color: borderSoft,
+        thickness: 1,
+        space: 1,
+      ),
+
+      appBarTheme: AppBarTheme(
         backgroundColor: cardColor,
         foregroundColor: darkColor,
         surfaceTintColor: Colors.transparent,
@@ -137,22 +169,20 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         titleSpacing: 20,
-        toolbarHeight: 68,
-        shape: Border(
+        toolbarHeight: 66,
+        shape: const Border(
           bottom: BorderSide(
             color: borderSoft,
             width: 1,
           ),
         ),
-        titleTextStyle: TextStyle(
-          color: darkColor,
-          fontFamily: 'monospace',
-          fontSize: 19,
-          fontWeight: FontWeight.w700,
+        titleTextStyle: mono(
+          fontSize: 18,
+          letterSpacing: -0.4,
         ),
-        iconTheme: IconThemeData(
+        iconTheme: const IconThemeData(
           color: primaryBlue,
-          size: 24,
+          size: 23,
         ),
       ),
 
@@ -161,12 +191,13 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         margin: EdgeInsets.zero,
+        shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           side: const BorderSide(
-            color: borderColor,
+            color: borderSoft,
             width: 1,
           ),
-          borderRadius: BorderRadius.circular(defaultRadius),
+          borderRadius: BorderRadius.circular(largeRadius),
         ),
       ),
 
@@ -177,15 +208,21 @@ class AppTheme {
           horizontal: 16,
           vertical: 17,
         ),
-        labelStyle: const TextStyle(
-          color: darkSoft,
+        labelStyle: mono(
           fontSize: 13,
-          fontWeight: FontWeight.w700,
+          color: darkSoft,
         ),
-        hintStyle: const TextStyle(
-          color: mutedColor,
+        floatingLabelStyle: mono(
+          fontSize: 13,
+          color: primaryBlueDark,
+        ),
+        hintStyle: sans(
           fontSize: 14,
-          fontWeight: FontWeight.w400,
+          color: mutedColor,
+        ),
+        helperStyle: sans(
+          fontSize: 12,
+          color: mutedColor,
         ),
         prefixIconColor: primaryBlue,
         suffixIconColor: primaryBlue,
@@ -217,10 +254,10 @@ class AppTheme {
           ),
           borderRadius: BorderRadius.circular(defaultRadius),
         ),
-        errorStyle: const TextStyle(
-          color: errorDark,
+        errorStyle: sans(
           fontSize: 12,
           fontWeight: FontWeight.w600,
+          color: errorDark,
         ),
       ),
 
@@ -243,11 +280,22 @@ class AppTheme {
             ),
             borderRadius: BorderRadius.circular(defaultRadius),
           ),
-          textStyle: const TextStyle(
-            fontFamily: 'monospace',
+          textStyle: mono(
             fontSize: 15,
-            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
           ),
+        ),
+      ),
+
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: primaryBlue,
+          foregroundColor: Colors.white,
+          minimumSize: const Size.fromHeight(52),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(defaultRadius),
+          ),
+          textStyle: mono(fontSize: 15),
         ),
       ),
 
@@ -266,11 +314,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(defaultRadius),
           ),
-          textStyle: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: mono(fontSize: 14),
         ),
       ),
 
@@ -281,11 +325,7 @@ class AppTheme {
             horizontal: 12,
             vertical: 10,
           ),
-          textStyle: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: mono(fontSize: 14),
         ),
       ),
 
@@ -304,6 +344,21 @@ class AppTheme {
         ),
       ),
 
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: primaryYellow,
+        foregroundColor: darkColor,
+        elevation: 2,
+        highlightElevation: 2,
+        extendedTextStyle: mono(fontSize: 14),
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(
+            color: primaryYellowStrong,
+            width: 1,
+          ),
+          borderRadius: BorderRadius.circular(defaultRadius),
+        ),
+      ),
+
       chipTheme: ChipThemeData(
         backgroundColor: primaryBlueSoft,
         selectedColor: primaryYellow,
@@ -316,23 +371,44 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(smallRadius),
         ),
-        labelStyle: const TextStyle(
-          color: primaryBlueDark,
-          fontFamily: 'monospace',
+        labelStyle: mono(
           fontSize: 12,
-          fontWeight: FontWeight.w700,
+          color: primaryBlueDark,
+        ),
+      ),
+
+      listTileTheme: ListTileThemeData(
+        titleTextStyle: mono(fontSize: 15),
+        subtitleTextStyle: sans(fontSize: 13, color: mutedColor),
+        iconColor: primaryBlue,
+      ),
+
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith<Color>(
+              (Set<WidgetState> states) {
+            return states.contains(WidgetState.selected)
+                ? primaryBlue
+                : cardColor;
+          },
+        ),
+        trackColor: WidgetStateProperty.resolveWith<Color>(
+              (Set<WidgetState> states) {
+            return states.contains(WidgetState.selected)
+                ? primaryBlueSoft
+                : borderSoft;
+          },
         ),
       ),
 
       snackBarTheme: SnackBarThemeData(
         backgroundColor: darkColor,
-        contentTextStyle: const TextStyle(
-          color: Colors.white,
-          fontFamily: 'monospace',
+        contentTextStyle: sans(
           fontSize: 14,
           fontWeight: FontWeight.w500,
+          color: Colors.white,
         ),
         behavior: SnackBarBehavior.floating,
+        insetPadding: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(defaultRadius),
         ),
@@ -342,20 +418,16 @@ class AppTheme {
         backgroundColor: cardColor,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          side: const BorderSide(color: borderColor),
+          side: const BorderSide(color: borderSoft),
           borderRadius: BorderRadius.circular(largeRadius),
         ),
-        titleTextStyle: const TextStyle(
-          color: darkColor,
-          fontFamily: 'monospace',
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
+        titleTextStyle: mono(
+          fontSize: 19,
+          letterSpacing: -0.4,
         ),
-        contentTextStyle: const TextStyle(
-          color: textColor,
-          fontFamily: 'monospace',
+        contentTextStyle: sans(
           fontSize: 14,
-          height: 1.5,
+          height: 1.55,
         ),
       ),
 
@@ -365,21 +437,16 @@ class AppTheme {
         circularTrackColor: primaryBlueSoft,
       ),
 
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: cardColor,
         selectedItemColor: primaryBlue,
         unselectedItemColor: mutedColor,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
-        selectedLabelStyle: TextStyle(
-          fontFamily: 'monospace',
+        selectedLabelStyle: mono(fontSize: 11),
+        unselectedLabelStyle: mono(
           fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-        unselectedLabelStyle: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
         ),
       ),
 
@@ -391,27 +458,49 @@ class AppTheme {
         indicatorColor: primaryYellow,
         labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>(
               (Set<WidgetState> states) {
-            return TextStyle(
-              color: states.contains(WidgetState.selected)
-                  ? darkColor
-                  : mutedColor,
-              fontFamily: 'monospace',
+            final bool selected = states.contains(WidgetState.selected);
+
+            return mono(
               fontSize: 11,
-              fontWeight: states.contains(WidgetState.selected)
-                  ? FontWeight.w700
-                  : FontWeight.w600,
+              color: selected ? darkColor : mutedColor,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             );
           },
         ),
         iconTheme: WidgetStateProperty.resolveWith<IconThemeData>(
               (Set<WidgetState> states) {
             return IconThemeData(
-              color: states.contains(WidgetState.selected)
-                  ? primaryBlueDark
-                  : mutedColor,
               size: 23,
+              color: states.contains(WidgetState.selected)
+                  ? darkColor
+                  : mutedColor,
             );
           },
+        ),
+      ),
+
+      tabBarTheme: TabBarThemeData(
+        labelColor: darkColor,
+        unselectedLabelColor: mutedColor,
+        indicatorColor: primaryBlue,
+        labelStyle: mono(fontSize: 13),
+        unselectedLabelStyle: mono(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+
+      dropdownMenuTheme: DropdownMenuThemeData(
+        textStyle: sans(fontSize: 14, color: darkColor),
+      ),
+
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: cardColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(largeRadius),
+          ),
         ),
       ),
     );

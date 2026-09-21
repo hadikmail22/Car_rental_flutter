@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'cars_screen.dart';
 import 'conversations_screen.dart';
-import 'home_screen.dart';
 import 'my_rentals_screen.dart';
 import 'profile_screen.dart';
 
@@ -20,8 +19,8 @@ class _CustomerMainScreenState
     extends State<CustomerMainScreen> {
   int _selectedIndex = 0;
 
+  // The customer lands on the fleet, exactly like the website does.
   static const List<Widget> _screens = [
-    HomeScreen(),
     CarsScreen(),
     MyRentalsScreen(),
     ConversationsScreen(
@@ -70,16 +69,6 @@ class _CustomerMainScreenState
             selectedIndex: _selectedIndex,
             onDestinationSelected: _changeScreen,
             destinations: const [
-              NavigationDestination(
-                tooltip: 'Home',
-                icon: Icon(
-                  Icons.home_outlined,
-                ),
-                selectedIcon: Icon(
-                  Icons.home_rounded,
-                ),
-                label: 'Home',
-              ),
               NavigationDestination(
                 tooltip: 'Fleet',
                 icon: Icon(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 
@@ -116,10 +117,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _isLoading = true;
     });
 
-    // Registration API connection will be added later.
-    await Future<void>.delayed(
-      const Duration(seconds: 1),
-    );
+    try {
+      await AuthService().register(
+        fullName: _fullNameController.text,
+        email: _emailController.text,
+        phone: _phoneController.text,
+        dateOfBirth: _birthDateController.text,
+        drivingLicenseNumber: _licenseController.text,
+        password: _passwordController.text,
+        confirmPassword: _confirmPasswordController.text,
+      );
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+
+      return;
+    }
 
     if (!mounted) {
       return;
@@ -132,7 +157,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Account created successfully.',
+          'Account created successfully. You can sign in now.',
         ),
         backgroundColor: AppTheme.successColor,
       ),

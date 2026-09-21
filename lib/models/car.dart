@@ -12,6 +12,13 @@ class Car {
   final String? category;
   final String? imageUrl;
 
+  // Today's offer, sent by the server. Null when there is none.
+  final double? discountedPricePerDay;
+  final String? offerName;
+  final String? offerType;
+  final double? offerPercentage;
+  final String? offerEndDate;
+
   const Car({
     required this.id,
     required this.brand,
@@ -25,17 +32,38 @@ class Car {
     this.categoryId,
     this.category,
     this.imageUrl,
+    this.discountedPricePerDay,
+    this.offerName,
+    this.offerType,
+    this.offerPercentage,
+    this.offerEndDate,
   });
+
+  // Falls back to the normal price when there is no offer today.
+  double get effectivePricePerDay =>
+      discountedPricePerDay ?? pricePerDay;
 
   String get fullName => '$brand $model';
 
   bool get isAvailable => status == 'AVAILABLE';
+
+  bool get hasDiscount =>
+      offerType == 'DISCOUNT' && effectivePricePerDay < pricePerDay;
+
+  bool get hasSurcharge =>
+      offerType == 'INCREASE' && effectivePricePerDay > pricePerDay;
 
   factory Car.fromJson(Map<String, dynamic> json) {
     final Map<String, dynamic>? categoryJson =
     json['category'] is Map
         ? Map<String, dynamic>.from(
       json['category'] as Map,
+    )
+        : null;
+
+    final Map<String, dynamic>? offerJson = json['offer'] is Map
+        ? Map<String, dynamic>.from(
+      json['offer'] as Map,
     )
         : null;
 
@@ -55,6 +83,13 @@ class Car {
       (categoryJson?['id'] as num?)?.toInt(),
       category: categoryJson?['name']?.toString(),
       imageUrl: json['imageUrl']?.toString(),
+      discountedPricePerDay:
+      (json['effectivePricePerDay'] as num?)?.toDouble(),
+      offerName: offerJson?['name']?.toString(),
+      offerType: offerJson?['adjustmentType']?.toString(),
+      offerPercentage:
+      (offerJson?['percentage'] as num?)?.toDouble(),
+      offerEndDate: offerJson?['endDate']?.toString(),
     );
   }
 }

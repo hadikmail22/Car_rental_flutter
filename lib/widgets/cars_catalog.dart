@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/car.dart';
 import '../providers/car_provider.dart';
 import '../screens/car_details_screen.dart';
+import '../screens/car_form_screen.dart';
+import '../services/car_service.dart';
 import '../theme/app_theme.dart';
 
 class CarsCatalog extends StatefulWidget {
@@ -22,6 +24,7 @@ class CarsCatalog extends StatefulWidget {
 
 class _CarsCatalogState extends State<CarsCatalog> {
   late final TextEditingController _searchController;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -34,6 +37,8 @@ class _CarsCatalogState extends State<CarsCatalog> {
       text: provider.searchQuery,
     );
 
+    _scrollController.addListener(_onScroll);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (provider.cars.isEmpty) {
         provider.loadCars();
@@ -43,8 +48,36 @@ class _CarsCatalogState extends State<CarsCatalog> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Load the next page before the user reaches the very bottom,
+  // so the list feels endless instead of asking for a button tap.
+  void _onScroll() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    final double distanceToBottom =
+        _scrollController.position.maxScrollExtent -
+            _scrollController.position.pixels;
+
+    if (distanceToBottom > 400) {
+      return;
+    }
+
+    final CarsProvider provider = context.read<CarsProvider>();
+
+    // The provider ignores the call when it is already loading
+    // or when there is nothing left to load.
+    if (provider.hasMore &&
+        !provider.isLoadingMore &&
+        !provider.isLoading) {
+      provider.loadMoreCars();
+    }
   }
 
   Future<void> _clearAllFilters(
@@ -117,6 +150,7 @@ class _CarsCatalogState extends State<CarsCatalog> {
       color: AppTheme.primaryBlue,
       onRefresh: provider.refreshCars,
       child: ListView.separated(
+        controller: _scrollController,
         physics:
         const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
@@ -141,7 +175,7 @@ class _CarsCatalogState extends State<CarsCatalog> {
             int index,
             ) {
           if (index == provider.cars.length) {
-            return _LoadMoreButton(
+            return _LoadMoreFooter(
               isLoading: provider.isLoadingMore,
               onPressed: provider.loadMoreCars,
             );
@@ -150,6 +184,7 @@ class _CarsCatalogState extends State<CarsCatalog> {
           return _CarCard(
             car: provider.cars[index],
             unitNumber: index + 1,
+            isAdmin: widget.isAdmin,
           );
         },
       ),
@@ -377,11 +412,82 @@ class _StatusChip extends StatelessWidget {
 class _CarCard extends StatelessWidget {
   final Car car;
   final int unitNumber;
+  final bool isAdmin;
 
   const _CarCard({
     required this.car,
     required this.unitNumber,
+    this.isAdmin = false,
   });
+
+  Future<void> _editCar(BuildContext context) async {
+    final bool? saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute<bool>(
+        builder: (_) => CarFormScreen(car: car),
+      ),
+    );
+
+    if (saved == true && context.mounted) {
+      await context.read<CarsProvider>().refreshCars();
+    }
+  }
+
+  Future<void> _deleteCar(BuildContext context) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete car'),
+          content: Text(
+            'Delete ${car.fullName} (${car.plateNumber})?\n'
+                'This cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('CANCEL'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.errorColor,
+              ),
+              child: const Text('DELETE'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final CarsProvider provider = context.read<CarsProvider>();
+
+    try {
+      await CarService().deleteCar(car.id);
+
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Car deleted.'),
+          backgroundColor: AppTheme.successColor,
+        ),
+      );
+
+      await provider.refreshCars();
+    } on CarServiceException catch (error) {
+      // For example: a car with rental history cannot be deleted.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    }
+  }
 
   void _openDetails(BuildContext context) {
     Navigator.push(
@@ -530,12 +636,97 @@ class _CarCard extends StatelessWidget {
                         ],
                       ),
                     ),
+
+                    // Edit and delete, for the Admin only.
+                    if (isAdmin)
+                      PopupMenuButton<String>(
+                        tooltip: 'Car actions',
+                        icon: const Icon(
+                          Icons.more_vert,
+                          color: AppTheme.darkSoft,
+                        ),
+                        onSelected: (String action) {
+                          if (action == 'edit') {
+                            _editCar(context);
+                          } else if (action == 'delete') {
+                            _deleteCar(context);
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem<String>(
+                            value: 'edit',
+                            child: ListTile(
+                              leading: Icon(Icons.edit_outlined),
+                              title: Text('Edit'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'delete',
+                            child: ListTile(
+                              leading: Icon(
+                                Icons.delete_outline,
+                                color: AppTheme.errorColor,
+                              ),
+                              title: Text(
+                                'Delete',
+                                style: TextStyle(
+                                  color: AppTheme.errorColor,
+                                ),
+                              ),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
 
-              _CarImage(
-                imageUrl: car.imageUrl,
+              Stack(
+                children: [
+                  _CarImage(
+                    imageUrl: car.imageUrl,
+                  ),
+
+                  // Today's offer, so the customer sees it
+                  // without opening the car.
+                  if (car.hasDiscount)
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.successColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.local_offer_outlined,
+                              color: Colors.white,
+                              size: 13,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${car.offerPercentage?.toStringAsFixed(0) ?? ''}% OFF',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
 
               Container(
@@ -606,9 +797,11 @@ class _CarCard extends StatelessWidget {
                         crossAxisAlignment:
                         CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'BASE DAILY RATE',
-                            style: TextStyle(
+                          Text(
+                            car.hasDiscount
+                                ? 'TODAY\'S RATE'
+                                : 'BASE DAILY RATE',
+                            style: const TextStyle(
                               color:
                               AppTheme.mutedColor,
                               fontSize: 8,
@@ -620,16 +813,42 @@ class _CarCard extends StatelessWidget {
 
                           const SizedBox(height: 5),
 
-                          Text(
-                            '\$${car.pricePerDay.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              color:
-                              AppTheme.primaryBlueDark,
-                              fontSize: 23,
-                              fontWeight:
-                              FontWeight.w700,
-                              letterSpacing: -1,
-                            ),
+                          Row(
+                            crossAxisAlignment:
+                            CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '\$${car.effectivePricePerDay.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  color: car.hasDiscount
+                                      ? AppTheme.successColor
+                                      : AppTheme.primaryBlueDark,
+                                  fontSize: 23,
+                                  fontWeight:
+                                  FontWeight.w700,
+                                  letterSpacing: -1,
+                                ),
+                              ),
+
+                              if (car.hasDiscount) ...[
+                                const SizedBox(width: 8),
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    bottom: 4,
+                                  ),
+                                  child: Text(
+                                    '\$${car.pricePerDay.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      color: AppTheme.mutedColor,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      decoration:
+                                      TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
@@ -777,41 +996,6 @@ class _LoadingState extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LoadMoreButton extends StatelessWidget {
-  final bool isLoading;
-  final VoidCallback onPressed;
-
-  const _LoadMoreButton({
-    required this.isLoading,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Padding(
-        padding: EdgeInsets.all(18),
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: const Icon(
-          Icons.expand_more_rounded,
-        ),
-        label: const Text(
-          'LOAD MORE VEHICLES',
-        ),
       ),
     );
   }
@@ -1026,4 +1210,46 @@ class _StatusStyle {
     required this.foreground,
     required this.background,
   });
+}
+
+
+// Shown at the end of the list while the next page loads.
+// The button stays as a fallback if the automatic load fails.
+class _LoadMoreFooter extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  const _LoadMoreFooter({
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 22),
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: AppTheme.primaryBlue,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: TextButton(
+          onPressed: onPressed,
+          child: const Text('LOAD MORE'),
+        ),
+      ),
+    );
+  }
 }

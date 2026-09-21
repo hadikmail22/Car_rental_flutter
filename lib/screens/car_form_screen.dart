@@ -4,6 +4,7 @@ import '../models/car.dart';
 import '../models/car_catalog.dart';
 import '../services/car_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/car_photo_uploader.dart';
 import '../widgets/primary_button.dart';
 
 class CarFormScreen extends StatefulWidget {
@@ -131,6 +132,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     });
 
     try {
+      int? newCarId;
       final int year = int.parse(_yearController.text.trim());
       final double price = double.parse(_priceController.text.trim());
 
@@ -146,7 +148,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
           categoryId: _categoryId,
         );
       } else {
-        await _carService.createCar(
+        newCarId = await _carService.createCar(
           brandId: _brandId!,
           modelId: _modelId!,
           year: year,
@@ -171,6 +173,48 @@ class _CarFormScreenState extends State<CarFormScreen> {
           backgroundColor: AppTheme.successColor,
         ),
       );
+
+      // Right after adding a car, offer to add its photos.
+      if (newCarId != null) {
+        final bool? addPhotos = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              icon: const Icon(
+                Icons.add_a_photo_outlined,
+                color: AppTheme.primaryBlue,
+                size: 36,
+              ),
+              title: const Text('Add photos now?'),
+              content: const Text(
+                'Take or choose photos of the car so customers can see it.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('LATER'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('ADD PHOTOS'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (addPhotos == true && mounted) {
+          await pickAndUploadCarPhotos(
+            context,
+            carId: newCarId,
+            carName: 'New car',
+          );
+        }
+
+        if (!mounted) {
+          return;
+        }
+      }
 
       Navigator.pop(context, true);
     } on CarServiceException catch (error) {

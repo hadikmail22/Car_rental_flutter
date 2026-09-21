@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 import '../firebase_options.dart';
 import '../models/app_notification.dart';
 import '../screens/rental_details_screen.dart';
+import 'api_client.dart';
 import 'rental_service.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey =
-    GlobalKey<ScaffoldMessengerState>();
+GlobalKey<ScaffoldMessengerState>();
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -27,6 +28,13 @@ class AppNotificationService extends ChangeNotifier {
 
   bool _configured = false;
   String? _fcmToken;
+
+  // True while someone is logged in on this phone.
+  bool _linkedToUser = false;
+
+  // A notification that was tapped before the user was logged in.
+  // It is opened right after login.
+  int? _pendingRentalId;
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
 
@@ -52,7 +60,7 @@ class AppNotificationService extends ChangeNotifier {
       if (kDebugMode) {
         debugPrint(
           'Notification permission: '
-          '${settings.authorizationStatus}',
+              '${settings.authorizationStatus}',
         );
       }
 
@@ -69,6 +77,12 @@ class AppNotificationService extends ChangeNotifier {
           debugPrint('REFRESHED FCM TOKEN: $newToken');
         }
 
+        // Firebase can change the token at any time.
+        // Tell the server so pushes keep arriving.
+        if (_linkedToUser) {
+          syncTokenWithBackend();
+        }
+
         notifyListeners();
       });
 
@@ -80,7 +94,11 @@ class AppNotificationService extends ChangeNotifier {
           .getInitialMessage();
 
       if (initialMessage != null) {
-        _addNotification(initialMessage);
+        final AppNotification notification = _addNotification(initialMessage);
+
+        // The app was closed and opened from this notification.
+        // Nobody is logged in yet, so remember it for later.
+        _pendingRentalId = notification.rentalId;
       }
 
       _configured = true;
@@ -91,7 +109,7 @@ class AppNotificationService extends ChangeNotifier {
       if (kDebugMode) {
         debugPrint(
           'Firebase initialization failed: '
-          '$error',
+              '$error',
         );
 
         debugPrintStack(stackTrace: stackTrace);
@@ -117,17 +135,17 @@ class AppNotificationService extends ChangeNotifier {
         SnackBar(
           content: Text(
             '${notification.title}\n'
-            '${notification.message}',
+                '${notification.message}',
           ),
           duration: const Duration(seconds: 6),
           action: notification.rentalId == null
               ? null
               : SnackBarAction(
-                  label: 'VIEW',
-                  onPressed: () {
-                    _openRental(notification.rentalId!);
-                  },
-                ),
+            label: 'VIEW',
+            onPressed: () {
+              _openRental(notification.rentalId!);
+            },
+          ),
         ),
       );
   }
@@ -137,9 +155,79 @@ class AppNotificationService extends ChangeNotifier {
 
     markAsRead(notification.id);
 
-    if (notification.rentalId != null) {
-      await _openRental(notification.rentalId!);
+    if (notification.rentalId == null) {
+      return;
     }
+
+    if (_linkedToUser) {
+      await _openRental(notification.rentalId!);
+    } else {
+      _pendingRentalId = notification.rentalId;
+    }
+  }
+
+  /// Called after login (or after the saved session is restored).
+  /// Links this phone's token to the logged-in user on the server.
+  Future<void> syncTokenWithBackend() async {
+    _linkedToUser = true;
+
+    try {
+      _fcmToken ??= await FirebaseMessaging.instance.getToken();
+
+      if (_fcmToken == null) {
+        return;
+      }
+
+      await ApiClient.dio.post(
+        '/api/device-tokens',
+        data: {
+          'token': _fcmToken,
+          'platform': defaultTargetPlatform.name,
+        },
+      );
+    } catch (error) {
+      // Push is a bonus: a failure here must never block the login.
+      if (kDebugMode) {
+        debugPrint('Could not register the device token: $error');
+      }
+    }
+  }
+
+  /// Called before logout, so this phone stops receiving
+  /// pushes for the user who is leaving.
+  Future<void> removeTokenFromBackend() async {
+    _linkedToUser = false;
+    _pendingRentalId = null;
+
+    if (_fcmToken == null) {
+      return;
+    }
+
+    try {
+      await ApiClient.dio.post(
+        '/api/device-tokens/unregister',
+        data: {'token': _fcmToken},
+      );
+    } catch (_) {
+      // Ignore: logout continues anyway.
+    }
+  }
+
+  /// Opens the rental from a notification that was tapped
+  /// while the user was not logged in yet.
+  Future<void> openPendingRental() async {
+    final int? rentalId = _pendingRentalId;
+
+    if (rentalId == null) {
+      return;
+    }
+
+    _pendingRentalId = null;
+
+    // Let the home screen finish its first frame before pushing.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    await _openRental(rentalId);
   }
 
   AppNotification _addNotification(RemoteMessage remoteMessage) {
@@ -151,17 +239,17 @@ class AppNotificationService extends ChangeNotifier {
 
     final String title =
         remoteNotification?.title ??
-        remoteMessage.data['title']?.toString() ??
-        'Car Rental';
+            remoteMessage.data['title']?.toString() ??
+            'Car Rental';
 
     final String message =
         remoteNotification?.body ??
-        remoteMessage.data['body']?.toString() ??
-        'You have a new notification.';
+            remoteMessage.data['body']?.toString() ??
+            'You have a new notification.';
 
     final AppNotification notification = AppNotification(
       id:
-          remoteMessage.messageId?.hashCode ??
+      remoteMessage.messageId?.hashCode ??
           DateTime.now().microsecondsSinceEpoch,
       title: title,
       message: message,

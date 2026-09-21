@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../models/user_session.dart';
+import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import 'admin_dashboard_screen.dart';
+import 'customer_main_screen.dart';
 import 'login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -43,13 +48,44 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animationController.forward();
 
-    Future<void>.delayed(
-      const Duration(seconds: 2),
-      _openLoginScreen,
-    );
+    _decideStartScreen();
   }
 
-  void _openLoginScreen() {
+  /*
+   * While the logo animates, try the session saved on the phone.
+   * Valid session  -> straight to the right home screen.
+   * Anything else  -> the login screen, as before.
+   */
+  Future<void> _decideStartScreen() async {
+    final List<dynamic> results = await Future.wait<dynamic>([
+      AuthService().restoreSession(),
+      // Keep the splash visible for at least a moment.
+      Future<void>.delayed(const Duration(milliseconds: 1400)),
+    ]);
+
+    final UserSession? user = results.first as UserSession?;
+
+    if (!mounted) {
+      return;
+    }
+
+    if (user == null) {
+      _openScreen(const LoginScreen());
+      return;
+    }
+
+    _openScreen(
+      user.isAdmin
+          ? const AdminDashboardScreen()
+          : const CustomerMainScreen(),
+    );
+
+    // If the app was opened by tapping a notification,
+    // show that rental now that the user is in.
+    AppNotificationService.instance.openPendingRental();
+  }
+
+  void _openScreen(Widget screen) {
     if (!mounted) {
       return;
     }
@@ -63,7 +99,7 @@ class _SplashScreenState extends State<SplashScreen>
             Animation<double> animation,
             Animation<double> secondaryAnimation,
             ) {
-          return const LoginScreen();
+          return screen;
         },
         transitionsBuilder: (
             BuildContext context,

@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/chat_conversation.dart';
+import '../models/chat_message.dart';
 import '../providers/chat_provider.dart';
 import '../theme/app_theme.dart';
 import 'chat_screen.dart';
 
+/*
+ * Conversation list, messenger style.
+ *
+ * - Each row is one rental: the customer sees the car,
+ *   the admin sees the customer.
+ * - Active rentals first, past ones below.
+ * - Unread rows are bold with a yellow count.
+ * - Past conversations can be archived with a swipe.
+ * - A search box filters by car, customer or rental number.
+ */
 class ConversationsScreen extends StatefulWidget {
   final bool isAdmin;
 
@@ -15,125 +27,139 @@ class ConversationsScreen extends StatefulWidget {
   });
 
   @override
-  State<ConversationsScreen> createState() {
-    return _ConversationsScreenState();
-  }
+  State<ConversationsScreen> createState() => _ConversationsScreenState();
 }
 
-class _ConversationsScreenState
-    extends State<ConversationsScreen> {
+class _ConversationsScreenState extends State<ConversationsScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  static const Set<String> _activeStatuses = {'CONFIRMED', 'PICKED_UP'};
+
   @override
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback(
-          (_) {
-        context
-            .read<ChatProvider>()
-            .loadConversations();
-      },
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ChatProvider>().loadConversations();
+    });
   }
 
-  String _conversationName(
-      ChatConversation conversation,
-      ) {
-    if (widget.isAdmin) {
-      return conversation.customer.displayName;
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ---------- Text helpers ----------
+
+  String _title(ChatConversation conversation) {
+    return widget.isAdmin
+        ? conversation.customer.displayName
+        : conversation.car.fullName;
+  }
+
+  String _subtitle(ChatConversation conversation) {
+    return widget.isAdmin
+        ? conversation.car.fullName
+        : 'Car Rental Support';
+  }
+
+  String _initials(String text) {
+    final List<String> parts = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((String part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return '?';
     }
 
-    return 'Car Rental Admin';
+    if (parts.length == 1) {
+      return parts.first[0].toUpperCase();
+    }
+
+    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
   }
 
-  String _lastMessageText(
-      ChatConversation conversation,
-      ) {
-    final message = conversation.lastMessage;
+  String _preview(ChatConversation conversation) {
+    final ChatMessage? message = conversation.lastMessage;
 
     if (message == null) {
-      return 'No messages yet. Start the conversation.';
+      return 'No messages yet';
     }
 
-    if (message.body.trim().isNotEmpty) {
-      final String prefix =
-      message.mine ? 'You: ' : '';
+    final String prefix = message.mine ? 'You: ' : '';
 
+    if (message.body.trim().isNotEmpty) {
       return '$prefix${message.body.trim()}';
     }
 
     if (message.attachments.isNotEmpty) {
-      return message.mine
-          ? 'You sent a photo'
-          : 'Sent a photo';
+      final int count = message.attachments.length;
+      return '${prefix}Photo${count > 1 ? 's ($count)' : ''}';
     }
 
-    return 'New rental message';
+    return 'New message';
   }
 
-  String _formatTime(DateTime? date) {
+  String _time(DateTime? date) {
     if (date == null) {
       return '';
     }
 
-    final DateTime localDate =
-    date.toLocal();
+    final DateTime local = date.toLocal();
+    final DateTime today = DateUtils.dateOnly(DateTime.now());
+    final DateTime day = DateUtils.dateOnly(local);
+    final int daysAgo = today.difference(day).inDays;
 
-    final DateTime now = DateTime.now();
-
-    final bool sameDay =
-        now.year == localDate.year &&
-            now.month == localDate.month &&
-            now.day == localDate.day;
-
-    if (sameDay) {
-      final String hour =
-      localDate.hour
-          .toString()
-          .padLeft(2, '0');
-
-      final String minute =
-      localDate.minute
-          .toString()
-          .padLeft(2, '0');
-
-      return '$hour:$minute';
+    if (daysAgo == 0) {
+      return '${local.hour.toString().padLeft(2, '0')}:'
+          '${local.minute.toString().padLeft(2, '0')}';
     }
 
-    final String month =
-    localDate.month
-        .toString()
-        .padLeft(2, '0');
+    if (daysAgo == 1) {
+      return 'Yesterday';
+    }
 
-    final String day =
-    localDate.day
-        .toString()
-        .padLeft(2, '0');
+    if (daysAgo < 7) {
+      const List<String> names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return names[local.weekday - 1];
+    }
 
-    return '$day/$month';
+    return '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}';
   }
 
-  bool _canArchive(
-      ChatConversation conversation,
-      ) {
-    return conversation.rentalStatus ==
-        'COMPLETED' ||
-        conversation.rentalStatus ==
-            'CANCELLED';
+  bool _matches(ChatConversation conversation) {
+    if (_query.isEmpty) {
+      return true;
+    }
+
+    final String text = [
+      conversation.car.fullName,
+      conversation.customer.displayName,
+      conversation.customer.email,
+      '#${conversation.rentalId}',
+      '${conversation.rentalId}',
+    ].join(' ').toLowerCase();
+
+    return text.contains(_query);
   }
 
-  Future<void> _openConversation(
-      ChatConversation conversation,
-      ) async {
+  // ---------- Actions ----------
+
+  Future<void> _open(ChatConversation conversation) async {
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
         builder: (BuildContext context) {
           return ChatScreen(
             rentalId: conversation.rentalId,
-            otherUserName:
-            _conversationName(
-              conversation,
-            ),
+            otherUserName: widget.isAdmin
+                ? conversation.customer.displayName
+                : 'Car Rental Admin',
           );
         },
       ),
@@ -143,55 +169,27 @@ class _ConversationsScreenState
       return;
     }
 
-    await context
-        .read<ChatProvider>()
-        .loadConversations();
+    await context.read<ChatProvider>().loadConversations();
   }
 
-  Future<void> _archiveConversation(
-      ChatProvider provider,
-      ChatConversation conversation,
-      ) async {
-    final bool? confirmed =
-    await showDialog<bool>(
+  Future<bool> _confirmArchive(ChatConversation conversation) async {
+    final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (
-          BuildContext dialogContext,
-          ) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
-          icon: const Icon(
-            Icons.archive_outlined,
-            color: AppTheme.primaryBlue,
-            size: 43,
-          ),
-          title: const Text(
-            'Remove conversation?',
-            textAlign: TextAlign.center,
-          ),
+          title: const Text('Archive conversation?'),
           content: const Text(
-            'This conversation will be removed '
-                'from your list. The rental record '
-                'will not be deleted.',
-            textAlign: TextAlign.center,
+            'It will be removed from your list. '
+                'The rental record is not deleted.',
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('KEEP'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              child: const Text('REMOVE'),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('ARCHIVE'),
             ),
           ],
         );
@@ -199,596 +197,372 @@ class _ConversationsScreenState
     );
 
     if (confirmed != true || !mounted) {
-      return;
+      return false;
     }
 
-    final bool success =
-    await provider.archiveConversation(
+    final ChatProvider provider = context.read<ChatProvider>();
+    final bool success = await provider.archiveConversation(
       conversation.rentalId,
     );
 
     if (!mounted) {
-      return;
+      return success;
     }
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    if (success) {
+      HapticFeedback.lightImpact();
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           success
-              ? 'Conversation removed.'
-              : provider.conversationsError ??
-              'Unable to remove conversation.',
+              ? 'Conversation archived.'
+              : provider.conversationsError ?? 'Unable to archive.',
         ),
-        backgroundColor: success
-            ? AppTheme.successColor
-            : AppTheme.errorColor,
+        backgroundColor: success ? null : AppTheme.errorColor,
       ),
     );
+
+    return success;
   }
+
+  // ---------- Build ----------
 
   @override
   Widget build(BuildContext context) {
-    final ChatProvider provider =
-    context.watch<ChatProvider>();
+    final ChatProvider provider = context.watch<ChatProvider>();
+
+    final List<ChatConversation> visible =
+    provider.conversations.where(_matches).toList();
+
+    final List<ChatConversation> active = visible
+        .where((c) => _activeStatuses.contains(c.rentalStatus))
+        .toList();
+
+    final List<ChatConversation> past = visible
+        .where((c) => !_activeStatuses.contains(c.rentalStatus))
+        .toList();
+
+    final int unread = provider.totalUnreadMessages;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Messages'),
+        title: Row(
+          children: [
+            const Text('Messages'),
+            if (unread > 0) ...[
+              const SizedBox(width: 10),
+              _CountBadge(count: unread),
+            ],
+          ],
+        ),
       ),
       body: Column(
         children: [
-          _MessagesHeader(
-            conversationCount:
-            provider.conversations.length,
-            unreadCount:
-            provider.totalUnreadMessages,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (String value) {
+                setState(() {
+                  _query = value.trim().toLowerCase();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: widget.isAdmin
+                    ? 'Search customer, car or rental #'
+                    : 'Search car or rental #',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _query = '';
+                    });
+                  },
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
           ),
           Expanded(
-            child: _buildBody(provider),
+            child: _buildList(provider, active, past),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBody(ChatProvider provider) {
-    if (provider.isLoadingConversations &&
-        provider.conversations.isEmpty) {
-      return const _MessagesLoadingState();
+  Widget _buildList(
+      ChatProvider provider,
+      List<ChatConversation> active,
+      List<ChatConversation> past,
+      ) {
+    if (provider.isLoadingConversations && provider.conversations.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (provider.conversationsError != null &&
         provider.conversations.isEmpty) {
-      return _MessagesState(
-        icon: Icons.cloud_off_outlined,
-        title: 'Unable to load messages',
-        message:
-        provider.conversationsError!,
-        buttonText: 'TRY AGAIN',
-        onPressed:
-        provider.loadConversations,
+      return _EmptyState(
+        icon: Icons.wifi_off_rounded,
+        title: 'Could not load messages',
+        message: provider.conversationsError!,
+        actionLabel: 'TRY AGAIN',
+        onAction: provider.loadConversations,
       );
     }
 
     if (provider.conversations.isEmpty) {
-      return _MessagesState(
-        icon:
-        Icons.chat_bubble_outline_rounded,
+      return _EmptyState(
+        icon: Icons.forum_outlined,
         title: 'No conversations yet',
         message: widget.isAdmin
-            ? 'Customer conversations will appear '
-            'after their rentals are confirmed.'
-            : 'Your conversation with the rental '
-            'team will appear after your booking '
-            'is confirmed.',
-        buttonText: 'REFRESH',
-        onPressed:
-        provider.loadConversations,
+            ? 'Chats open once a customer confirms a booking.'
+            : 'A chat opens for each confirmed booking, '
+            'so you can talk to us about pickup and return.',
       );
     }
 
-    return Column(
-      children: [
-        if (provider.isLoadingConversations)
-          const LinearProgressIndicator(
-            minHeight: 3,
-          ),
-        if (provider.conversationsError !=
-            null)
-          _MessagesErrorBanner(
-            message:
-            provider.conversationsError!,
-            onClose:
-            provider.clearConversationsError,
-          ),
-        Expanded(
-          child: RefreshIndicator(
-            color: AppTheme.primaryBlue,
-            onRefresh:
-            provider.refreshConversations,
-            child: ListView.separated(
-              physics:
-              const AlwaysScrollableScrollPhysics(),
-              padding:
-              const EdgeInsets.fromLTRB(
-                16,
-                18,
-                16,
-                30,
-              ),
-              itemCount:
-              provider.conversations.length,
-              separatorBuilder: (
-                  BuildContext context,
-                  int index,
-                  ) {
-                return const SizedBox(
-                  height: 13,
-                );
-              },
-              itemBuilder: (
-                  BuildContext context,
-                  int index,
-                  ) {
-                final ChatConversation
-                conversation =
-                provider
-                    .conversations[index];
+    if (active.isEmpty && past.isEmpty) {
+      return _EmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No matches',
+        message: 'Nothing matches "$_query".',
+      );
+    }
 
-                return _ConversationCard(
-                  conversation:
-                  conversation,
-                  displayName:
-                  _conversationName(
-                    conversation,
-                  ),
-                  lastMessage:
-                  _lastMessageText(
-                    conversation,
-                  ),
-                  formattedTime:
-                  _formatTime(
-                    conversation
-                        .lastMessage
-                        ?.createdAt,
-                  ),
-                  canArchive:
-                  _canArchive(
-                    conversation,
-                  ),
-                  isArchiving:
-                  provider
-                      .archivingRentalId ==
-                      conversation.rentalId,
-                  onTap: () {
-                    _openConversation(
-                      conversation,
-                    );
-                  },
-                  onArchive: () {
-                    _archiveConversation(
-                      provider,
-                      conversation,
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MessagesHeader
-    extends StatelessWidget {
-  final int conversationCount;
-  final int unreadCount;
-
-  const _MessagesHeader({
-    required this.conversationCount,
-    required this.unreadCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-        20,
-        22,
-        20,
-        20,
-      ),
-      decoration: const BoxDecoration(
-        color: AppTheme.cardColor,
-        border: Border(
-          bottom: BorderSide(
-            color: AppTheme.borderSoft,
-          ),
-        ),
-      ),
-      child: Row(
+    return RefreshIndicator(
+      onRefresh: provider.loadConversations,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color:
-              AppTheme.primaryYellowSoft,
-              borderRadius:
-              BorderRadius.circular(
-                AppTheme.defaultRadius,
-              ),
-              border: Border.all(
-                color: AppTheme
-                    .primaryYellowStrong,
-              ),
+          if (active.isNotEmpty) ...[
+            _SectionHeader(title: 'ACTIVE RENTALS', count: active.length),
+            ...active.map(_buildRow),
+          ],
+          if (past.isNotEmpty) ...[
+            _SectionHeader(
+              title: 'PAST',
+              count: past.length,
+              hint: 'Swipe left to archive',
             ),
-            child: const Icon(
-              Icons.forum_outlined,
-              color:
-              AppTheme.primaryBlueDark,
-              size: 27,
-            ),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'RENTAL SUPPORT',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleSmall,
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'Your conversations',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  unreadCount == 0
-                      ? 'All your messages are up to date.'
-                      : '$unreadCount unread message${unreadCount == 1 ? '' : 's'}.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            constraints:
-            const BoxConstraints(
-              minWidth: 48,
-            ),
-            padding:
-            const EdgeInsets.symmetric(
-              horizontal: 11,
-              vertical: 9,
-            ),
-            decoration: BoxDecoration(
-              color:
-              AppTheme.primaryBlueSoft,
-              borderRadius:
-              BorderRadius.circular(
-                AppTheme.smallRadius,
-              ),
-              border: Border.all(
-                color: AppTheme.primaryBlue,
-              ),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  '$conversationCount',
-                  style: const TextStyle(
-                    color: AppTheme
-                        .primaryBlueDark,
-                    fontSize: 18,
-                    fontWeight:
-                    FontWeight.w700,
-                  ),
-                ),
-                const Text(
-                  'CHATS',
-                  style: TextStyle(
-                    color: AppTheme
-                        .primaryBlueDark,
-                    fontSize: 9,
-                    fontWeight:
-                    FontWeight.w700,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
+            ...past.map(_buildRow),
+          ],
         ],
       ),
     );
   }
+
+  Widget _buildRow(ChatConversation conversation) {
+    final bool archivable = !_activeStatuses.contains(conversation.rentalStatus);
+
+    final Widget row = _ConversationRow(
+      title: _title(conversation),
+      subtitle: _subtitle(conversation),
+      initials: _initials(_title(conversation)),
+      preview: _preview(conversation),
+      time: _time(conversation.lastMessage?.createdAt),
+      rentalId: conversation.rentalId,
+      status: conversation.rentalStatus,
+      unreadCount: conversation.unreadCount,
+      hasPhoto: conversation.lastMessage?.attachments.isNotEmpty ?? false,
+      onTap: () => _open(conversation),
+    );
+
+    if (!archivable) {
+      return row;
+    }
+
+    return Dismissible(
+      key: ValueKey<int>(conversation.rentalId),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => _confirmArchive(conversation),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        color: AppTheme.primaryBlue,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.archive_outlined, color: Colors.white),
+            SizedBox(width: 8),
+            Text(
+              'ARCHIVE',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+      child: row,
+    );
+  }
 }
 
-class _ConversationCard
-    extends StatelessWidget {
-  final ChatConversation conversation;
-  final String displayName;
-  final String lastMessage;
-  final String formattedTime;
-  final bool canArchive;
-  final bool isArchiving;
+/*
+ * ---------- Row ----------
+ */
+class _ConversationRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String initials;
+  final String preview;
+  final String time;
+  final int rentalId;
+  final String status;
+  final int unreadCount;
+  final bool hasPhoto;
   final VoidCallback onTap;
-  final VoidCallback onArchive;
 
-  const _ConversationCard({
-    required this.conversation,
-    required this.displayName,
-    required this.lastMessage,
-    required this.formattedTime,
-    required this.canArchive,
-    required this.isArchiving,
+  const _ConversationRow({
+    required this.title,
+    required this.subtitle,
+    required this.initials,
+    required this.preview,
+    required this.time,
+    required this.rentalId,
+    required this.status,
+    required this.unreadCount,
+    required this.hasPhoto,
     required this.onTap,
-    required this.onArchive,
   });
+
+  bool get _unread => unreadCount > 0;
 
   @override
   Widget build(BuildContext context) {
-    final bool unread =
-        conversation.hasUnreadMessages;
+    final _StatusLook look = _StatusLook.of(status);
 
-    return Card(
-      color: unread
-          ? AppTheme.primaryYellowSoft
-          : AppTheme.cardColor,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(
-          color: unread
-              ? AppTheme
-              .primaryYellowStrong
-              : AppTheme.borderColor,
-        ),
-        borderRadius:
-        BorderRadius.circular(
-          AppTheme.defaultRadius,
-        ),
-      ),
+    return Material(
+      color: _unread ? AppTheme.primaryYellowSoft : AppTheme.cardColor,
       child: InkWell(
-        onTap:
-        isArchiving ? null : onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(15),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: const BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: AppTheme.borderSoft),
+            ),
+          ),
           child: Row(
-            crossAxisAlignment:
-            CrossAxisAlignment.start,
             children: [
+              // Avatar with a small status dot, like "online" in messengers.
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration:
-                    BoxDecoration(
-                      color: AppTheme
-                          .primaryBlueSoft,
-                      borderRadius:
-                      BorderRadius.circular(
-                        AppTheme
-                            .defaultRadius,
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor:
+                    _unread ? AppTheme.primaryYellow : AppTheme.primaryBlueSoft,
+                    child: Text(
+                      initials,
+                      style: TextStyle(
+                        color: _unread
+                            ? AppTheme.darkColor
+                            : AppTheme.primaryBlueDark,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
                       ),
-                    ),
-                    child: const Icon(
-                      Icons.person_outline_rounded,
-                      color:
-                      AppTheme.primaryBlue,
-                      size: 27,
                     ),
                   ),
-                  if (unread)
-                    Positioned(
-                      right: -4,
-                      top: -4,
-                      child: Container(
-                        width: 19,
-                        height: 19,
-                        alignment:
-                        Alignment.center,
-                        decoration:
-                        BoxDecoration(
-                          color: AppTheme
-                              .primaryBlue,
-                          shape:
-                          BoxShape.circle,
-                          border: Border.all(
-                            color: AppTheme
-                                .cardColor,
-                            width: 2,
-                          ),
-                        ),
-                        child: Text(
-                          conversation
-                              .unreadCount >
-                              9
-                              ? '9+'
-                              : '${conversation.unreadCount}',
-                          style:
-                          const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight:
-                            FontWeight.w700,
-                          ),
-                        ),
+                  Positioned(
+                    right: -1,
+                    bottom: -1,
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: look.color,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
                       ),
                     ),
+                  ),
                 ],
               ),
-              const SizedBox(width: 13),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            displayName,
+                            title,
                             maxLines: 1,
-                            overflow:
-                            TextOverflow
-                                .ellipsis,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: AppTheme
-                                  .darkColor,
+                              color: AppTheme.darkColor,
                               fontSize: 15,
-                              fontWeight: unread
-                                  ? FontWeight
-                                  .w700
-                                  : FontWeight
-                                  .w600,
+                              fontWeight:
+                              _unread ? FontWeight.w700 : FontWeight.w600,
                             ),
                           ),
                         ),
-                        if (formattedTime
-                            .isNotEmpty)
-                          Text(
-                            formattedTime,
-                            style:
-                            const TextStyle(
-                              color: AppTheme
-                                  .mutedColor,
-                              fontSize: 10,
-                              fontWeight:
-                              FontWeight
-                                  .w600,
-                            ),
+                        const SizedBox(width: 8),
+                        Text(
+                          time,
+                          style: TextStyle(
+                            color: _unread
+                                ? AppTheme.primaryBlueDark
+                                : AppTheme.mutedColor,
+                            fontSize: 12,
+                            fontWeight:
+                            _unread ? FontWeight.w700 : FontWeight.w400,
                           ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 2),
                     Text(
-                      conversation.car.fullName,
+                      '$subtitle · #$rentalId · ${look.label}',
                       maxLines: 1,
-                      overflow:
-                      TextOverflow.ellipsis,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: AppTheme
-                            .primaryBlueDark,
+                        color: AppTheme.mutedColor,
                         fontSize: 12,
-                        fontWeight:
-                        FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      lastMessage,
-                      maxLines: 2,
-                      overflow:
-                      TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: unread
-                            ? AppTheme.darkSoft
-                            : AppTheme.mutedColor,
-                        fontSize: 12,
-                        fontWeight: unread
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 11),
+                    const SizedBox(height: 5),
                     Row(
                       children: [
-                        _RentalBadge(
-                          rentalId:
-                          conversation
-                              .rentalId,
-                        ),
-                        const SizedBox(
-                          width: 7,
-                        ),
-                        _StatusBadge(
-                          status: conversation
-                              .rentalStatus,
-                        ),
-                        const Spacer(),
-                        if (conversation
-                            .photoCount >
-                            0) ...[
+                        if (hasPhoto) ...[
                           const Icon(
-                            Icons
-                                .photo_outlined,
-                            color: AppTheme
-                                .mutedColor,
-                            size: 16,
+                            Icons.photo_outlined,
+                            size: 15,
+                            color: AppTheme.mutedColor,
                           ),
-                          const SizedBox(
-                            width: 4,
-                          ),
-                          Text(
-                            '${conversation.photoCount}',
-                            style:
-                            const TextStyle(
-                              color: AppTheme
-                                  .mutedColor,
-                              fontSize: 10,
-                              fontWeight:
-                              FontWeight
-                                  .w600,
-                            ),
-                          ),
+                          const SizedBox(width: 4),
                         ],
-                        if (canArchive) ...[
-                          const SizedBox(
-                            width: 5,
-                          ),
-                          isArchiving
-                              ? const SizedBox(
-                            width: 32,
-                            height: 32,
-                            child:
-                            Padding(
-                              padding:
-                              EdgeInsets
-                                  .all(
-                                7,
-                              ),
-                              child:
-                              CircularProgressIndicator(
-                                strokeWidth:
-                                2,
-                              ),
-                            ),
-                          )
-                              : IconButton(
-                            tooltip:
-                            'Remove conversation',
-                            onPressed:
-                            onArchive,
-                            visualDensity:
-                            VisualDensity
-                                .compact,
-                            icon:
-                            const Icon(
-                              Icons
-                                  .archive_outlined,
-                              color: AppTheme
-                                  .primaryBlue,
-                              size: 20,
+                        Expanded(
+                          child: Text(
+                            preview,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _unread
+                                  ? AppTheme.darkColor
+                                  : AppTheme.textColor,
+                              fontSize: 13.5,
+                              fontWeight:
+                              _unread ? FontWeight.w600 : FontWeight.w400,
                             ),
                           ),
+                        ),
+                        if (_unread) ...[
+                          const SizedBox(width: 8),
+                          _CountBadge(count: unreadCount),
                         ],
                       ],
                     ),
@@ -803,299 +577,162 @@ class _ConversationCard
   }
 }
 
-class _RentalBadge extends StatelessWidget {
-  final int rentalId;
+class _StatusLook {
+  final String label;
+  final Color color;
 
-  const _RentalBadge({
-    required this.rentalId,
-  });
+  const _StatusLook(this.label, this.color);
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding:
-      const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 5,
-      ),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundColor,
-        borderRadius:
-        BorderRadius.circular(
-          AppTheme.smallRadius,
-        ),
-        border: Border.all(
-          color: AppTheme.borderSoft,
-        ),
-      ),
-      child: Text(
-        'RENTAL #$rentalId',
-        style: const TextStyle(
-          color: AppTheme.mutedColor,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-
-  const _StatusBadge({
-    required this.status,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    Color foreground;
-    Color background;
-
+  static _StatusLook of(String status) {
     switch (status) {
-      case 'COMPLETED':
-        foreground =
-            AppTheme.successColor;
-        background =
-            AppTheme.successSoft;
-
-      case 'CANCELLED':
-        foreground =
-            AppTheme.errorDark;
-        background =
-            AppTheme.errorSoft;
-
+      case 'CONFIRMED':
+        return const _StatusLook('Confirmed', AppTheme.primaryBlue);
       case 'PICKED_UP':
-        foreground =
-        const Color(0xFF6F42C1);
-        background =
-        const Color(0xFFF0E8FC);
-
+        return const _StatusLook('On the road', AppTheme.successColor);
+      case 'COMPLETED':
+        return const _StatusLook('Completed', AppTheme.mutedColor);
+      case 'CANCELLED':
+        return const _StatusLook('Cancelled', AppTheme.errorColor);
       default:
-        foreground =
-            AppTheme.primaryBlueDark;
-        background =
-            AppTheme.primaryBlueSoft;
+        return _StatusLook(status, AppTheme.mutedColor);
     }
+  }
+}
 
+/*
+ * ---------- Small pieces ----------
+ */
+class _CountBadge extends StatelessWidget {
+  final int count;
+
+  const _CountBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding:
-      const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 5,
-      ),
+      constraints: const BoxConstraints(minWidth: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius:
-        BorderRadius.circular(
-          AppTheme.smallRadius,
-        ),
+        color: AppTheme.primaryYellow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primaryYellowStrong),
       ),
       child: Text(
-        status.replaceAll('_', ' '),
-        style: TextStyle(
-          color: foreground,
-          fontSize: 9,
+        count > 99 ? '99+' : '$count',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: AppTheme.darkColor,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
         ),
       ),
     );
   }
 }
 
-class _MessagesErrorBanner
-    extends StatelessWidget {
-  final String message;
-  final VoidCallback onClose;
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final int count;
+  final String? hint;
 
-  const _MessagesErrorBanner({
-    required this.message,
-    required this.onClose,
+  const _SectionHeader({
+    required this.title,
+    required this.count,
+    this.hint,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      margin:
-      const EdgeInsets.fromLTRB(
-        16,
-        14,
-        16,
-        0,
-      ),
-      padding:
-      const EdgeInsets.fromLTRB(
-        14,
-        10,
-        6,
-        10,
-      ),
-      decoration: BoxDecoration(
-        color: AppTheme.errorSoft,
-        borderRadius:
-        BorderRadius.circular(
-          AppTheme.smallRadius,
-        ),
-        border: Border.all(
-          color: AppTheme.errorColor
-              .withValues(alpha: 0.35),
-        ),
-      ),
+      color: AppTheme.backgroundColor,
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
       child: Row(
         children: [
-          const Icon(
-            Icons.error_outline_rounded,
-            color: AppTheme.errorDark,
-            size: 21,
+          Text(
+            '$title · $count',
+            style: const TextStyle(
+              color: AppTheme.primaryBlueDark,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
           ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              message,
+          const Spacer(),
+          if (hint != null)
+            Text(
+              hint!,
               style: const TextStyle(
-                color: AppTheme.errorDark,
-                fontSize: 12,
-                fontWeight:
-                FontWeight.w600,
+                color: AppTheme.mutedColor,
+                fontSize: 11,
               ),
             ),
-          ),
-          IconButton(
-            tooltip: 'Dismiss',
-            onPressed: onClose,
-            icon: const Icon(
-              Icons.close_rounded,
-              color: AppTheme.errorDark,
-            ),
-          ),
         ],
       ),
     );
   }
 }
 
-class _MessagesLoadingState
-    extends StatelessWidget {
-  const _MessagesLoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: 5,
-      separatorBuilder: (
-          BuildContext context,
-          int index,
-          ) {
-        return const SizedBox(height: 13);
-      },
-      itemBuilder: (
-          BuildContext context,
-          int index,
-          ) {
-        return Container(
-          height: 140,
-          decoration: BoxDecoration(
-            color: AppTheme.cardColor,
-            borderRadius:
-            BorderRadius.circular(
-              AppTheme.defaultRadius,
-            ),
-            border: Border.all(
-              color: AppTheme.borderSoft,
-            ),
-          ),
-          child: const Center(
-            child:
-            CircularProgressIndicator(),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _MessagesState
-    extends StatelessWidget {
+class _EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
   final String message;
-  final String buttonText;
-  final VoidCallback onPressed;
+  final String? actionLabel;
+  final Future<void> Function()? onAction;
 
-  const _MessagesState({
+  const _EmptyState({
     required this.icon,
     required this.title,
     required this.message,
-    required this.buttonText,
-    required this.onPressed,
+    this.actionLabel,
+    this.onAction,
   });
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      color: AppTheme.primaryBlue,
-      onRefresh: () async {
-        onPressed();
-      },
-      child: ListView(
-        physics:
-        const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(24),
-        children: [
-          const SizedBox(height: 75),
-          Center(
-            child: Container(
-              width: 90,
-              height: 90,
-              decoration: BoxDecoration(
-                color: AppTheme
-                    .primaryBlueSoft,
-                borderRadius:
-                BorderRadius.circular(
-                  AppTheme.largeRadius,
-                ),
-                border: Border.all(
-                  color:
-                  AppTheme.primaryBlue,
-                ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                color: AppTheme.primaryBlueSoft,
+                shape: BoxShape.circle,
               ),
-              child: Icon(
-                icon,
-                color:
-                AppTheme.primaryBlue,
-                size: 43,
+              child: Icon(icon, size: 34, color: AppTheme.primaryBlue),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppTheme.darkColor,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .headlineMedium,
-          ),
-          const SizedBox(height: 9),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium,
-          ),
-          const SizedBox(height: 24),
-          OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: const Icon(
-              Icons.refresh_rounded,
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppTheme.mutedColor,
+                fontSize: 13.5,
+                height: 1.5,
+              ),
             ),
-            label: Text(buttonText),
-          ),
-        ],
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 18),
+              OutlinedButton(
+                onPressed: onAction,
+                child: Text(actionLabel!),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

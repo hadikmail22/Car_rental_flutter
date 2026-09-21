@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter/material.dart' show DateTimeRange;
 
 import '../models/car.dart';
 import '../models/car_catalog.dart';
@@ -208,6 +210,85 @@ class CarService {
     } catch (_) {
       throw const CarServiceException(
         'An unexpected error occurred while adding the car.',
+      );
+    }
+  }
+
+  /// The date ranges this car is already booked (confirmed or out now).
+  Future<List<DateTimeRange>> getBookedPeriods(int carId) async {
+    try {
+      final Response<dynamic> response = await ApiClient.dio.get(
+        '/api/cars/$carId/booked-periods',
+      );
+
+      if (response.data is! Map) {
+        return <DateTimeRange>[];
+      }
+
+      final List<dynamic> items =
+          (response.data as Map)['items'] as List<dynamic>? ?? [];
+
+      return items.whereType<Map>().map((item) {
+        return DateTimeRange(
+          start: DateTime.parse(item['startDate'].toString()),
+          end: DateTime.parse(item['endDate'].toString()),
+        );
+      }).toList();
+    } catch (_) {
+      // Not critical: without it the server still rejects clashes.
+      return <DateTimeRange>[];
+    }
+  }
+
+  /// Uploads photos to a car. The first one becomes the main photo
+  /// when [setMain] is true (or when the car has none yet).
+  /// [onProgress] gets a value from 0 to 1 while sending.
+  Future<String> uploadPhotos({
+    required int carId,
+    required List<XFile> photos,
+    bool setMain = true,
+    void Function(double progress)? onProgress,
+  }) async {
+    try {
+      final FormData formData = FormData();
+
+      formData.fields.add(MapEntry('setMain', setMain.toString()));
+
+      for (final XFile photo in photos) {
+        formData.files.add(
+          MapEntry(
+            'photos',
+            MultipartFile.fromBytes(
+              await photo.readAsBytes(),
+              filename: photo.name,
+            ),
+          ),
+        );
+      }
+
+      final Response<dynamic> response = await ApiClient.dio.post(
+        '/api/cars/$carId/photos',
+        data: formData,
+        options: Options(
+          // Photos take longer than normal JSON requests.
+          sendTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 60),
+        ),
+        onSendProgress: (int sent, int total) {
+          if (total > 0) {
+            onProgress?.call(sent / total);
+          }
+        },
+      );
+
+      if (response.data is Map && (response.data as Map)['message'] != null) {
+        return (response.data as Map)['message'].toString();
+      }
+
+      return 'Photos uploaded.';
+    } on DioException catch (error) {
+      throw CarServiceException(
+        _writeErrorMessage(error, 'Failed to upload photos.'),
       );
     }
   }

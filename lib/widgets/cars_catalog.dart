@@ -7,6 +7,7 @@ import '../screens/car_details_screen.dart';
 import '../screens/car_form_screen.dart';
 import '../services/car_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/car_photo_uploader.dart';
 
 class CarsCatalog extends StatefulWidget {
   final bool isAdmin;
@@ -181,10 +182,18 @@ class _CarsCatalogState extends State<CarsCatalog> {
             );
           }
 
-          return _CarCard(
-            car: provider.cars[index],
-            unitNumber: index + 1,
-            isAdmin: widget.isAdmin,
+          return _EntranceAnimation(
+            // Keyed by the car, so a card animates once when it appears,
+            // not every time the list rebuilds.
+            key: ValueKey<int>(provider.cars[index].id),
+            // Cards from the first page come in one after another;
+            // cards from "load more" appear almost at once.
+            delay: Duration(milliseconds: 70 * (index % 10).clamp(0, 6)),
+            child: _CarCard(
+              car: provider.cars[index],
+              unitNumber: index + 1,
+              isAdmin: widget.isAdmin,
+            ),
           );
         },
       ),
@@ -420,6 +429,44 @@ class _CarCard extends StatelessWidget {
     this.isAdmin = false,
   });
 
+  // "Ends today", "1 day left", "5 days left" from the offer's end date.
+  static String? _offerTimeLeft(String? endDate) {
+    if (endDate == null) {
+      return null;
+    }
+
+    final DateTime? end = DateTime.tryParse(endDate);
+
+    if (end == null) {
+      return null;
+    }
+
+    final DateTime today = DateUtils.dateOnly(DateTime.now());
+    final int days = DateUtils.dateOnly(end).difference(today).inDays;
+
+    if (days < 0) {
+      return null;
+    }
+
+    if (days == 0) {
+      return 'ENDS TODAY';
+    }
+
+    return days == 1 ? '1 DAY LEFT' : '$days DAYS LEFT';
+  }
+
+  Future<void> _addPhotos(BuildContext context) async {
+    final bool uploaded = await pickAndUploadCarPhotos(
+      context,
+      carId: car.id,
+      carName: car.fullName,
+    );
+
+    if (uploaded && context.mounted) {
+      await context.read<CarsProvider>().refreshCars();
+    }
+  }
+
   Future<void> _editCar(BuildContext context) async {
     final bool? saved = await Navigator.push<bool>(
       context,
@@ -646,13 +693,23 @@ class _CarCard extends StatelessWidget {
                           color: AppTheme.darkSoft,
                         ),
                         onSelected: (String action) {
-                          if (action == 'edit') {
+                          if (action == 'photos') {
+                            _addPhotos(context);
+                          } else if (action == 'edit') {
                             _editCar(context);
                           } else if (action == 'delete') {
                             _deleteCar(context);
                           }
                         },
                         itemBuilder: (_) => const [
+                          PopupMenuItem<String>(
+                            value: 'photos',
+                            child: ListTile(
+                              leading: Icon(Icons.add_a_photo_outlined),
+                              title: Text('Add photos'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
                           PopupMenuItem<String>(
                             value: 'edit',
                             child: ListTile(
@@ -722,6 +779,24 @@ class _CarCard extends StatelessWidget {
                                 letterSpacing: 0.5,
                               ),
                             ),
+                            if (_offerTimeLeft(car.offerEndDate) != null) ...[
+                              Container(
+                                width: 1,
+                                height: 11,
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                ),
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                              Text(
+                                _offerTimeLeft(car.offerEndDate)!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -975,27 +1050,194 @@ class _CarImage extends StatelessWidget {
   }
 }
 
-class _LoadingState extends StatelessWidget {
+/*
+ * Grey placeholder cards shaped like the real ones,
+ * with a light shimmer moving across them.
+ * The list feels faster than a spinning circle.
+ */
+class _LoadingState extends StatefulWidget {
   const _LoadingState();
 
   @override
+  State<_LoadingState> createState() => _LoadingStateState();
+}
+
+class _LoadingStateState extends State<_LoadingState>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _shimmer;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _shimmer = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _shimmer.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Center(
+    return ListView.separated(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      itemCount: 3,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      itemBuilder: (context, index) {
+        return AnimatedBuilder(
+          animation: _shimmer,
+          builder: (context, _) {
+            return _SkeletonCard(progress: _shimmer.value);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SkeletonCard extends StatelessWidget {
+  final double progress;
+
+  const _SkeletonCard({required this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    // The bright band slides from left to right.
+    final Gradient shimmer = LinearGradient(
+      begin: Alignment(-1.5 + progress * 3, 0),
+      end: Alignment(-0.5 + progress * 3, 0),
+      colors: const [
+        Color(0xFFEDEDED),
+        Color(0xFFF8F8F8),
+        Color(0xFFEDEDED),
+      ],
+    );
+
+    Widget block({double? width, required double height, double radius = 6}) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          gradient: shimmer,
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        border: Border.all(color: AppTheme.borderSoft),
+        borderRadius: BorderRadius.circular(AppTheme.defaultRadius),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text(
-            'LOADING FLEET...',
-            style: TextStyle(
-              color: AppTheme.primaryBlueDark,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                block(width: 110, height: 9),
+                const SizedBox(height: 12),
+                block(width: 190, height: 18),
+              ],
+            ),
+          ),
+          block(height: 150, radius: 0),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      block(width: 70, height: 8),
+                      const SizedBox(height: 10),
+                      block(width: 100, height: 20),
+                    ],
+                  ),
+                ),
+                block(width: 96, height: 40, radius: AppTheme.defaultRadius),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/*
+ * Fades a card in while it slides up a little.
+ * Used so the first cards appear one after another.
+ */
+class _EntranceAnimation extends StatefulWidget {
+  final Widget child;
+  final Duration delay;
+
+  const _EntranceAnimation({
+    super.key,
+    required this.child,
+    required this.delay,
+  });
+
+  @override
+  State<_EntranceAnimation> createState() => _EntranceAnimationState();
+}
+
+class _EntranceAnimationState extends State<_EntranceAnimation>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    Future<void>.delayed(widget.delay, () {
+      if (mounted) {
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: widget.child,
       ),
     );
   }

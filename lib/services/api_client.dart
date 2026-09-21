@@ -2,6 +2,7 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ApiClient {
   ApiClient._();
@@ -11,9 +12,31 @@ class ApiClient {
     defaultValue: 'http://10.0.2.2:8080',
   );
 
-  static final CookieJar _cookieJar = CookieJar();
+  // In memory until init() runs, then saved on the phone,
+  // so the session survives closing the app.
+  static CookieJar _cookieJar = CookieJar();
 
   static final Dio dio = _createDio();
+
+  /// Called once in main() before runApp.
+  /// Replaces the memory cookie jar with one stored on disk.
+  static Future<void> init() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+
+      _cookieJar = PersistCookieJar(
+        storage: FileStorage('${directory.path}/.cookies/'),
+      );
+    } catch (_) {
+      // If storage is unavailable, keep the memory jar.
+      // The app still works, the user just logs in each time.
+    }
+
+    // The cookie manager must be the first interceptor,
+    // so every other interceptor sees the session cookie.
+    dio.interceptors.removeWhere((interceptor) => interceptor is CookieManager);
+    dio.interceptors.insert(0, CookieManager(_cookieJar));
+  }
 
   static Dio _createDio() {
     final Dio dio = Dio(

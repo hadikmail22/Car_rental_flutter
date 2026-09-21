@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/login_request.dart';
 import '../models/user_session.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 import 'admin_dashboard_screen.dart';
@@ -90,6 +91,9 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (BuildContext context) => destination,
         ),
       );
+
+      // A notification tapped before login opens right after it.
+      AppNotificationService.instance.openPendingRental();
     } on AuthException catch (error) {
       if (!mounted) {
         return;

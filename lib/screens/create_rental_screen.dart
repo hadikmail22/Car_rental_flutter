@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/car.dart';
 import '../models/create_rental_request.dart';
 import '../models/create_rental_response.dart';
 import '../providers/rental_provider.dart';
+import '../services/car_service.dart';
 import '../services/rental_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
@@ -26,6 +28,52 @@ class CreateRentalScreen extends StatefulWidget {
 class _CreateRentalScreenState
     extends State<CreateRentalScreen> {
   final RentalService _rentalService = RentalService();
+
+  // Periods when this car is already taken.
+  List<DateTimeRange> _bookedPeriods = <DateTimeRange>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBookedPeriods();
+  }
+
+  Future<void> _loadBookedPeriods() async {
+    final List<DateTimeRange> periods =
+    await CarService().getBookedPeriods(widget.car.id);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _bookedPeriods = periods;
+    });
+  }
+
+  bool _isBookedDay(DateTime day) {
+    final DateTime date = DateUtils.dateOnly(day);
+
+    return _bookedPeriods.any((period) {
+      return !date.isBefore(period.start) && !date.isAfter(period.end);
+    });
+  }
+
+  // True if the range from start to end would run over a taken period.
+  bool _crossesBookedPeriod(DateTime start, DateTime end) {
+    return _bookedPeriods.any((period) {
+      return !start.isAfter(period.end) && !end.isBefore(period.start);
+    });
+  }
+
+  String _shortDate(DateTime date) {
+    const List<String> months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
+    return '${date.day} ${months[date.month - 1]}';
+  }
 
   DateTime? _startDate;
   DateTime? _endDate;
@@ -108,75 +156,76 @@ class _CreateRentalScreenState
     return _rentalDays * widget.car.pricePerDay;
   }
 
-  Future<void> _selectStartDate() async {
-    final DateTime today =
-    DateUtils.dateOnly(DateTime.now());
+  /*
+   * One calendar for the whole trip:
+   * the customer taps the pickup day, then the return day,
+   * and the days in between are highlighted.
+   * Both date fields open the same picker.
+   */
+  Future<void> _selectDateRange() async {
+    final DateTime today = DateUtils.dateOnly(DateTime.now());
 
-    final DateTime? selectedDate =
-    await showDatePicker(
+    final DateTimeRange? range = await showDateRangePicker(
       context: context,
-      initialDate: _startDate ?? today,
       firstDate: today,
       lastDate: DateTime(today.year + 2),
-      helpText: 'SELECT PICKUP DATE',
-      cancelText: 'CANCEL',
-      confirmText: 'SELECT',
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : null,
+      helpText: 'SELECT RENTAL PERIOD',
+      saveText: 'DONE',
+      fieldStartLabelText: 'Pickup',
+      fieldEndLabelText: 'Return',
+      // Taken days are greyed out. Once a pickup day is chosen,
+      // days after the next taken period are closed too,
+      // so a range can never jump over another booking.
+      selectableDayPredicate: (
+          DateTime day,
+          DateTime? selectedStart,
+          DateTime? selectedEnd,
+          ) {
+        if (_isBookedDay(day)) {
+          return false;
+        }
+
+        if (selectedStart != null &&
+            selectedEnd == null &&
+            day.isAfter(selectedStart)) {
+          return !_crossesBookedPeriod(
+            DateUtils.dateOnly(selectedStart),
+            DateUtils.dateOnly(day),
+          );
+        }
+
+        return true;
+      },
     );
 
-    if (selectedDate == null) {
+    if (range == null) {
       return;
     }
 
-    setState(() {
-      _startDate = selectedDate;
-      _quote = null;
-
-      if (_endDate != null &&
-          _endDate!.isBefore(selectedDate)) {
-        _endDate = null;
-      }
-    });
-
-    _loadQuote();
-  }
-
-  Future<void> _selectEndDate() async {
-    final DateTime today =
-    DateUtils.dateOnly(DateTime.now());
-
-    final DateTime firstAllowedDate =
-        _startDate ?? today;
-
-    final DateTime? selectedDate =
-    await showDatePicker(
-      context: context,
-      initialDate:
-      _endDate ?? firstAllowedDate,
-      firstDate: firstAllowedDate,
-      lastDate: DateTime(today.year + 2),
-      helpText: 'SELECT RETURN DATE',
-      cancelText: 'CANCEL',
-      confirmText: 'SELECT',
-    );
-
-    if (selectedDate == null) {
-      return;
-    }
+    HapticFeedback.selectionClick();
 
     setState(() {
-      _endDate = selectedDate;
+      _startDate = DateUtils.dateOnly(range.start);
+      _endDate = DateUtils.dateOnly(range.end);
       _quote = null;
     });
 
     _loadQuote();
   }
+
+  Future<void> _selectStartDate() => _selectDateRange();
+
+  Future<void> _selectEndDate() => _selectDateRange();
 
   Future<void> _confirmRental() async {
-    if (!widget.car.isAvailable) {
+    if (!widget.car.isBookable) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'This car is not currently available.',
+            'This car is in maintenance and cannot be booked.',
           ),
           backgroundColor: AppTheme.errorColor,
         ),
@@ -315,6 +364,9 @@ class _CreateRentalScreenState
 
       return;
     }
+
+    // A short vibration confirms the booking went through.
+    HapticFeedback.mediumImpact();
 
     await _showSuccessDialog(response);
 
@@ -479,6 +531,60 @@ class _CreateRentalScreenState
                     selected: _endDate != null,
                     onTap: _selectEndDate,
                   ),
+
+                  // Show which dates are already taken,
+                  // so the customer understands the greyed days.
+                  if (_bookedPeriods.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      'ALREADY BOOKED',
+                      style: TextStyle(
+                        color: AppTheme.mutedColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _bookedPeriods.map((period) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.errorSoft,
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.smallRadius,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.event_busy_outlined,
+                                size: 13,
+                                color: AppTheme.errorDark,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${_shortDate(period.start)} – '
+                                    '${_shortDate(period.end)}',
+                                style: const TextStyle(
+                                  color: AppTheme.errorDark,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
 
                   const SizedBox(height: 24),
 

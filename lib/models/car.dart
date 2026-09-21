@@ -47,6 +47,14 @@ class Car {
 
   bool get isAvailable => status == 'AVAILABLE';
 
+  // Out on a rental right now, but free again after it returns.
+  bool get isRentedNow => status == 'RENTED';
+
+  // Can a customer book future dates?
+  // Only maintenance blocks booking, like on the server.
+  // Date clashes are checked per rental, not by the car's status.
+  bool get isBookable => status != 'MAINTENANCE';
+
   bool get hasDiscount =>
       offerType == 'DISCOUNT' && effectivePricePerDay < pricePerDay;
 

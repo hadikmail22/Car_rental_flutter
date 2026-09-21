@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../models/login_request.dart';
 import '../models/user_session.dart';
 import 'api_client.dart';
+import 'notification_service.dart';
 
 class AuthService {
   static UserSession? currentUser;
@@ -49,6 +50,9 @@ class AuthService {
       final UserSession user = UserSession.fromJson(userJson);
 
       currentUser = user;
+
+      // Link this phone to the user, so the server can send pushes.
+      await AppNotificationService.instance.syncTokenWithBackend();
 
       return user;
     } on AuthException {
@@ -144,7 +148,37 @@ class AuthService {
     }
   }
 
+  /// Called by the splash screen.
+  /// If the session saved on the phone is still valid on the server,
+  /// the user goes straight in without typing the password again.
+  Future<UserSession?> restoreSession() async {
+    try {
+      final Response<dynamic> response = await ApiClient.dio.get('/api/me');
+
+      if (response.data is! Map) {
+        return null;
+      }
+
+      final UserSession user = UserSession.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+
+      currentUser = user;
+
+      await AppNotificationService.instance.syncTokenWithBackend();
+
+      return user;
+    } catch (_) {
+      // No saved session, an expired one, or no connection:
+      // in every case the user simply logs in normally.
+      return null;
+    }
+  }
+
   Future<void> logout() async {
+    // Must happen while the session is still valid.
+    await AppNotificationService.instance.removeTokenFromBackend();
+
     try {
       await ApiClient.dio.post('/logout');
     } catch (_) {

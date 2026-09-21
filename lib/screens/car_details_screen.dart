@@ -191,15 +191,16 @@ class CarDetailsScreen extends StatelessWidget {
 
                 _AvailabilityNotice(
                   isAvailable: car.isAvailable,
+                  isRentedNow: car.isRentedNow,
                 ),
 
                 const SizedBox(height: 22),
 
                 PrimaryButton(
-                  text: car.isAvailable
+                  text: car.isBookable
                       ? 'RESERVE THIS VEHICLE  →'
                       : 'VEHICLE NOT AVAILABLE',
-                  onPressed: car.isAvailable
+                  onPressed: car.isBookable
                       ? () {
                     _openRentalScreen(context);
                   }
@@ -613,20 +614,43 @@ class _SpecificationCard extends StatelessWidget {
 
 class _AvailabilityNotice extends StatelessWidget {
   final bool isAvailable;
+  final bool isRentedNow;
 
   const _AvailabilityNotice({
     required this.isAvailable,
+    required this.isRentedNow,
   });
 
   @override
   Widget build(BuildContext context) {
-    final Color foreground = isAvailable
-        ? AppTheme.successColor
-        : AppTheme.errorDark;
+    // Three cases: free now, rented now (future dates still open),
+    // or in maintenance (no booking at all).
+    final Color foreground;
+    final Color background;
+    final IconData icon;
+    final String title;
+    final String message;
 
-    final Color background = isAvailable
-        ? AppTheme.successSoft
-        : AppTheme.errorSoft;
+    if (isAvailable) {
+      foreground = AppTheme.successColor;
+      background = AppTheme.successSoft;
+      icon = Icons.verified_outlined;
+      title = 'AVAILABLE TO RESERVE';
+      message = 'Select your rental dates to continue.';
+    } else if (isRentedNow) {
+      foreground = AppTheme.primaryBlueDark;
+      background = AppTheme.primaryBlueSoft;
+      icon = Icons.event_repeat_outlined;
+      title = 'ON A RENTAL RIGHT NOW';
+      message = 'You can still book it for dates after it comes back. '
+          'Taken days are greyed out in the calendar.';
+    } else {
+      foreground = AppTheme.errorDark;
+      background = AppTheme.errorSoft;
+      icon = Icons.build_outlined;
+      title = 'IN MAINTENANCE';
+      message = 'This vehicle cannot be reserved right now.';
+    }
 
     return Container(
       width: double.infinity,
@@ -642,25 +666,16 @@ class _AvailabilityNotice extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            isAvailable
-                ? Icons.verified_outlined
-                : Icons.event_busy_outlined,
-            color: foreground,
-            size: 24,
-          ),
+          Icon(icon, color: foreground, size: 24),
 
           const SizedBox(width: 12),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isAvailable
-                      ? 'AVAILABLE TO RESERVE'
-                      : 'CURRENTLY UNAVAILABLE',
+                  title,
                   style: TextStyle(
                     color: foreground,
                     fontSize: 11,
@@ -672,9 +687,7 @@ class _AvailabilityNotice extends StatelessWidget {
                 const SizedBox(height: 4),
 
                 Text(
-                  isAvailable
-                      ? 'Select your rental dates to continue.'
-                      : 'This vehicle cannot be reserved right now.',
+                  message,
                   style: const TextStyle(
                     color: AppTheme.textColor,
                     fontSize: 10,
